@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="CleanMail - Distraction-Free Text Mail Viewer">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="cleanmail">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>CleanMail</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Google API Client Library required by google_sign_in_web for OAuth2 Token Client -->
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script>
+    window.addEventListener('load', function() {
+      if (typeof gapi !== 'undefined') {
+        gapi.load('client', function() {
+          console.log('[CleanMail] gapi.client initialized for OAuth token hand-off.');
+        });
+      }
+    });
+  </script>
+</head>
+<body>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

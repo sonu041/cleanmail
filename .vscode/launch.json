@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "CleanMail (Chrome - Port 8080)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "-d",
+        "chrome",
+        "--web-hostname",
+        "localhost",
+        "--web-port",
+        "8080"
+      ]
+    },
+    {
+      "name": "CleanMail (Windows Desktop)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "-d",
+        "windows"
+      ]
+    },
+    {
+      "name": "CleanMail (Android)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "-d",
+        "android"
+      ]
+    }
+  ]
+}
