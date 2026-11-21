@@ -12,12 +12,14 @@ abstract class MessageRepository {
   Stream<Map<String, int>> watchMessageCountsByAccount();
   Stream<Map<String, int>> watchMessageCountsByCategory({String? accountId});
   Stream<int> watchUnreadCount({String? accountId, String? category});
+  Stream<int> watchStarredCount({String? accountId, String? category});
 
   Future<MailMessage?> getMessage(String id);
   Future<void> saveMessages(List<MailMessage> messages);
   Future<void> markRead(String messageId, bool isRead);
   Future<void> archive(String messageId, bool isArchived);
   Future<void> setLocked(String messageId, bool isLocked);
+  Future<void> setStarred(String messageId, bool isStarred);
   Future<void> delete(String messageId);
   Future<List<MailMessage>> deleteMultiple(List<String> messageIds);
   Future<void> restoreMessage(MailMessage message);
@@ -27,6 +29,7 @@ abstract class MessageRepository {
   Future<int> deleteMessagesByRemoteIds(List<String> remoteIds);
   Future<void> markMessageReadByRemoteId(String remoteId, bool isRead);
   Future<void> archiveMessageByRemoteId(String remoteId, bool isArchived);
+  Future<void> markMessageStarredByRemoteId(String remoteId, bool isStarred);
   Future<Set<String>> getExistingRemoteMessageIds(String accountId);
   Future<DateTime?> getOldestMessageTimestamp([String? accountId]);
   Future<int> deduplicateMessages();

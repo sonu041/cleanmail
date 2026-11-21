@@ -523,7 +523,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   _buildInsightRow(
                     context,
                     label: isNerd ? 'ACTIVE_INBOX_VOLUME' : 'Current Active Mailbox',
-                    value: '$activeCount emails ($unreadCount unread • $readCount read)',
+                    value: '$activeCount emails',
+                    subtitle: '$unreadCount unread • $readCount read',
                     icon: Icons.mark_email_read_outlined,
                     color: Colors.blueGrey,
                     isNerd: isNerd,
@@ -544,28 +545,61 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     required IconData icon,
     required Color color,
     required bool isNerd,
+    String? subtitle,
   }) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: color),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 18, color: color),
+        ),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
-            ),
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.bold,
-            color: isNerd ? AppTheme.nerdAccentCyan : color,
-            fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      value,
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                        color: isNerd ? AppTheme.nerdAccentCyan : color,
+                        fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (subtitle != null && subtitle.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.textSecondary(context),
+                    fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ],
@@ -636,12 +670,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             subtitle: Row(
               children: [
                 if (accountEmail.isNotEmpty) ...[
-                  Text(
-                    accountEmail,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppTheme.textSecondary(context),
-                      fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                  Flexible(
+                    child: Text(
+                      accountEmail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textSecondary(context),
+                        fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 6),

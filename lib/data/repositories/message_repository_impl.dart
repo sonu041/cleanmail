@@ -48,6 +48,11 @@ class MessageRepositoryImpl implements MessageRepository {
   }
 
   @override
+  Stream<int> watchStarredCount({String? accountId, String? category}) {
+    return _db.watchStarredCount(accountId: accountId, category: category);
+  }
+
+  @override
   Future<MailMessage?> getMessage(String id) async {
     final entry = await _db.getMessageById(id);
     return entry != null ? _mapToDomain(entry) : null;
@@ -124,6 +129,26 @@ class MessageRepositoryImpl implements MessageRepository {
         count: 1,
         accountId: entry?.accountId,
         details: 'Locked "${entry?.subject ?? messageId}"',
+      ).ignore();
+    }
+  }
+
+  @override
+  Future<void> setStarred(String messageId, bool isStarred) async {
+    final entry = await _db.getMessageById(messageId);
+    await _db.setStarred(messageId, isStarred);
+    AppLogger.info(
+      isStarred ? 'Message Starred' : 'Message Unstarred',
+      '${isStarred ? "Starred" : "Unstarred"} "${entry?.subject ?? messageId}"',
+      category: LogCategory.triage,
+    );
+
+    // Two-way star sync: update starred status in real Gmail
+    if (entry != null && entry.remoteMessageId.isNotEmpty) {
+      _googleAuth.starGmailMessage(
+        remoteMessageId: entry.remoteMessageId,
+        isStarred: isStarred,
+        accountId: entry.accountId,
       ).ignore();
     }
   }
@@ -307,6 +332,11 @@ class MessageRepositoryImpl implements MessageRepository {
   @override
   Future<void> archiveMessageByRemoteId(String remoteId, bool isArchived) async {
     await _db.archiveMessageByRemoteId(remoteId, isArchived);
+  }
+
+  @override
+  Future<void> markMessageStarredByRemoteId(String remoteId, bool isStarred) async {
+    await _db.setStarredByRemoteId(remoteId, isStarred);
   }
 
   @override

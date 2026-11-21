@@ -1545,6 +1545,81 @@ void main() {
 
     await testDb.close();
   });
+
+  testWidgets('DashboardScreen renders without overflow on narrow width in Nerd theme',
+      (WidgetTester tester) async {
+    final testDb = AppDatabase.forTesting(NativeDatabase.memory());
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+    final testMessageRepo = MessageRepositoryImpl(testDb);
+
+    final account = MailAccount(
+      id: 'acc_narrow_1',
+      email: 'user@example.com',
+      displayName: 'User',
+      provider: AccountProvider.gmail,
+      avatarColorValue: Colors.blue.value,
+      createdAt: DateTime.now(),
+    );
+    await testAccountRepo.saveAccount(account);
+    await testMessageRepo.saveMessages([
+      MailMessage(
+        id: 'msg_1',
+        accountId: 'acc_narrow_1',
+        remoteMessageId: 'rem_1',
+        senderEmail: 'sender@example.com',
+        senderName: 'Sender',
+        subject: 'Subject 1',
+        snippet: 'Snippet',
+        plainTextBody: 'Body',
+        category: MailCategory.personal,
+        isRead: false,
+        receivedAt: DateTime.now(),
+      ),
+      MailMessage(
+        id: 'msg_2',
+        accountId: 'acc_narrow_1',
+        remoteMessageId: 'rem_2',
+        senderEmail: 'sender2@example.com',
+        senderName: 'Sender 2',
+        subject: 'Subject 2',
+        snippet: 'Snippet 2',
+        plainTextBody: 'Body 2',
+        category: MailCategory.personal,
+        isRead: true,
+        receivedAt: DateTime.now(),
+      ),
+    ]);
+
+    tester.view.physicalSize = const Size(292.0, 800.0);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        key: UniqueKey(),
+        overrides: [
+          themeModeProvider.overrideWith((ref) => _FakeThemeModeNotifier(AppThemeMode.nerd)),
+          databaseProvider.overrideWithValue(testDb),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.nerdTheme,
+          home: const DashboardScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DashboardScreen), findsOneWidget);
+    expect(find.text('2 emails'), findsOneWidget);
+    expect(find.text('1 unread • 1 read'), findsOneWidget);
+
+    await testDb.close();
+  });
 }
 
 class _FakeThemeModeNotifier extends ThemeModeNotifier {

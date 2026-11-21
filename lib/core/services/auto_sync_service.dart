@@ -262,7 +262,7 @@ class AutoSyncNotifier extends StateNotifier<Map<String, AccountAutoSyncState>> 
     _countdownTimers[accountId] = null;
   }
 
-  bool _isRateLimitError(String error) {
+  static bool isRateLimitError(String error) {
     final lower = error.toLowerCase();
     return lower.contains('429') ||
         lower.contains('403') ||
@@ -273,6 +273,8 @@ class AutoSyncNotifier extends StateNotifier<Map<String, AccountAutoSyncState>> 
         lower.contains('userratelimitexceeded') ||
         lower.contains('too many requests');
   }
+
+  bool _isRateLimitError(String error) => isRateLimitError(error);
 
   @override
   void dispose() {

@@ -553,6 +553,20 @@ class GoogleAuthService {
     );
   }
 
+  /// Stars or unstars a message in real Gmail (adds or removes 'STARRED' label).
+  Future<bool> starGmailMessage({
+    required String remoteMessageId,
+    required bool isStarred,
+    String? accountId,
+  }) {
+    return modifyGmailMessageLabels(
+      remoteMessageId: remoteMessageId,
+      addLabelIds: isStarred ? ['STARRED'] : null,
+      removeLabelIds: isStarred ? null : ['STARRED'],
+      accountId: accountId,
+    );
+  }
+
   // --------------------------------------------------------------------------
   // AUTH & INITIAL SYNC
   // --------------------------------------------------------------------------
@@ -802,6 +816,8 @@ class GoogleAuthService {
     final archivedRemoteIds = <String>{};
     final readRemoteIds = <String>{};
     final unreadRemoteIds = <String>{};
+    final starredRemoteIds = <String>{};
+    final unstarredRemoteIds = <String>{};
     final addedRemoteIds = <String>{};
     String? latestHistoryId;
     String? pageToken;
@@ -849,10 +865,13 @@ class GoogleAuthService {
                 if (labelIds.contains('UNREAD')) {
                   unreadRemoteIds.add(msgId);
                 }
+                if (labelIds.contains('STARRED')) {
+                  starredRemoteIds.add(msgId);
+                }
               }
             }
 
-            // 3. Labels removed (e.g. INBOX -> archived, UNREAD -> read)
+            // 3. Labels removed (e.g. INBOX -> archived, UNREAD -> read, STARRED -> unstarred)
             final labelsRemoved = record['labelsRemoved'] as List<dynamic>? ?? [];
             for (final l in labelsRemoved) {
               final msgId = l['message']?['id'] as String?;
@@ -863,6 +882,9 @@ class GoogleAuthService {
                 }
                 if (labelIds.contains('UNREAD')) {
                   readRemoteIds.add(msgId);
+                }
+                if (labelIds.contains('STARRED')) {
+                  unstarredRemoteIds.add(msgId);
                 }
               }
             }
@@ -942,6 +964,14 @@ class GoogleAuthService {
     }
     for (final id in unreadRemoteIds) {
       await messageRepo.markMessageReadByRemoteId(id, false);
+    }
+
+    // 4. Mark starred / unstarred
+    for (final id in starredRemoteIds) {
+      await messageRepo.markMessageStarredByRemoteId(id, true);
+    }
+    for (final id in unstarredRemoteIds) {
+      await messageRepo.markMessageStarredByRemoteId(id, false);
     }
 
     // 4. Fetch details for newly added messages (up to 50)
@@ -1477,7 +1507,7 @@ class GoogleAuthService {
     );
   }
 
-  String _formatErrorMessage(dynamic error) {
+  static String formatErrorMessage(dynamic error) {
     if (error is PlatformException) {
       if (error.code.contains('sign_in_failed') || error.message?.contains('10') == true) {
         return 'Android Google Sign-In requires your app\'s SHA-1 fingerprint and package name to be registered in Google Cloud Console:\n\n'
@@ -1541,6 +1571,8 @@ class GoogleAuthService {
 
     return error.toString();
   }
+
+  String _formatErrorMessage(dynamic error) => formatErrorMessage(error);
 
   ({String name, String email}) _parseSender(String raw) {
     if (raw.contains('<') && raw.contains('>')) {

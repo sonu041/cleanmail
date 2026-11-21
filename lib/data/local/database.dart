@@ -208,6 +208,25 @@ class AppDatabase extends _$AppDatabase {
         0);
   }
 
+  /// Watches the active (non-archived) starred message count.
+  Stream<int> watchStarredCount({String? accountId, String? category}) {
+    final whereClause = StringBuffer('WHERE is_archived = 0 AND is_starred = 1');
+    if (accountId != null && accountId.isNotEmpty) {
+      whereClause.write(" AND account_id = '$accountId'");
+    }
+    if (category != null && category.isNotEmpty && category.toLowerCase() != 'all') {
+      whereClause.write(" AND category = '${category.toLowerCase()}'");
+    }
+    final query = customSelect(
+      'SELECT COUNT(*) AS cnt FROM messages_table $whereClause',
+      readsFrom: {messagesTable},
+    );
+    return query.watchSingle().map((row) =>
+        row.readNullable<int>('cnt') ??
+        (row.data['cnt'] as num?)?.toInt() ??
+        0);
+  }
+
   Future<MessageEntry?> getMessageById(String id) {
     return (select(messagesTable)..where((m) => m.id.equals(id))).getSingleOrNull();
   }
@@ -238,6 +257,18 @@ class AppDatabase extends _$AppDatabase {
   Future<void> setLocked(String id, bool isLocked) async {
     await (update(messagesTable)..where((m) => m.id.equals(id))).write(
       MessagesTableCompanion(isLocked: Value(isLocked)),
+    );
+  }
+
+  Future<void> setStarred(String id, bool isStarred) async {
+    await (update(messagesTable)..where((m) => m.id.equals(id))).write(
+      MessagesTableCompanion(isStarred: Value(isStarred)),
+    );
+  }
+
+  Future<void> setStarredByRemoteId(String remoteId, bool isStarred) async {
+    await (update(messagesTable)..where((m) => m.remoteMessageId.equals(remoteId))).write(
+      MessagesTableCompanion(isStarred: Value(isStarred)),
     );
   }
 

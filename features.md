@@ -211,7 +211,7 @@ If you want CleanMail to automatically download all historical emails into your 
 - **Dedicated Toggle Switch**: Each mailbox features a dedicated **Continuous Older Email Sync** toggle switch (and top toggle button).
 - **Automatic 10-Second Interval**: When turned ON (checked), CleanMail fetches **100 older emails**, pauses for **10 seconds**, and immediately fetches the next 100 emails.
 - **Live Countdown Timer**: During the 10-second pause between batches, a live countdown shows the exact seconds remaining before the next 100 emails are downloaded (e.g., *"Next batch of 100 in 10s..."*, *"9s..."*, *"8s..."*).
-- **Smart Rate-Limit Protection**: If Google's API returns a rate limit warning, CleanMail automatically protects your account by adding **10 extra seconds** of backoff delay and clearly displays the countdown before retrying (e.g., *"Rate limit hit! Retrying in 20s..."*).
+- **Smart Rate-Limit Protection**: If Google's servers indicate that requests are arriving too quickly or download limits are momentarily reached, CleanMail automatically paces itself. It gently pauses, waits an extra **10 seconds** before trying again, and clearly displays a friendly countdown timer (e.g., *"Rate limit hit! Waiting 10s extra (20s total). Retrying in 20s..."*). No emails are skipped or lost, and background downloading resumes automatically once the timer reaches zero.
 - **Auto-Stop on Completion**: Once all historical emails in the mailbox are indexed, CleanMail displays *"All older emails synced!"* and automatically turns off the toggle.
 - **One-Tap Pause**: Simply flip the toggle switch OFF at any time to pause background syncing.
 

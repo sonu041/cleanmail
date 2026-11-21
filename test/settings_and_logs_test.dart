@@ -1,6 +1,8 @@
+import 'package:cleanmail/core/services/auto_sync_service.dart';
 import 'package:cleanmail/core/services/google_auth_service.dart';
 import 'package:cleanmail/core/services/log_service.dart';
 import 'package:cleanmail/core/theme/app_theme.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -208,6 +210,44 @@ void main() {
       final dark = AppTheme.darkTheme;
       expect(dark.brightness, equals(Brightness.dark));
       expect(dark.colorScheme.primary, equals(AppTheme.darkPrimary));
+    });
+  });
+
+  group('Rate Limit & Error Formatting Tests', () {
+    test('AutoSyncNotifier.isRateLimitError identifies 403, 429, and quota errors', () {
+      expect(AutoSyncNotifier.isRateLimitError('Rate limit reached (403/429): Gmail API quota exceeded.'), isTrue);
+      expect(AutoSyncNotifier.isRateLimitError('DioException [bad response]: status code of 403'), isTrue);
+      expect(AutoSyncNotifier.isRateLimitError('Error 429 Too Many Requests'), isTrue);
+      expect(AutoSyncNotifier.isRateLimitError('userRateLimitExceeded'), isTrue);
+      expect(AutoSyncNotifier.isRateLimitError('Quota exceeded for quota metric'), isTrue);
+      expect(AutoSyncNotifier.isRateLimitError('Unauthorized (401). Token was rejected or expired.'), isFalse);
+      expect(AutoSyncNotifier.isRateLimitError('Network connection timed out'), isFalse);
+    });
+
+    test('GoogleAuthService.formatErrorMessage properly categorizes 403 quota and rate limits', () {
+      final dioRateLimit403 = DioException(
+        requestOptions: RequestOptions(path: 'https://gmail.googleapis.com/gmail/v1/users/me/messages'),
+        response: Response(
+          requestOptions: RequestOptions(path: 'https://gmail.googleapis.com/gmail/v1/users/me/messages'),
+          statusCode: 403,
+          data: {
+            'error': {
+              'message': 'User-rate limit exceeded. Retry later.',
+            }
+          },
+        ),
+      );
+      final msg = GoogleAuthService.formatErrorMessage(dioRateLimit403);
+      expect(msg, contains('Rate limit reached (403)'));
+
+      final dio429 = DioException(
+        requestOptions: RequestOptions(path: 'https://gmail.googleapis.com/gmail/v1/users/me/messages'),
+        response: Response(
+          requestOptions: RequestOptions(path: 'https://gmail.googleapis.com/gmail/v1/users/me/messages'),
+          statusCode: 429,
+        ),
+      );
+      expect(GoogleAuthService.formatErrorMessage(dio429), contains('Rate limit reached (429)'));
     });
   });
 }
