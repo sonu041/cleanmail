@@ -373,7 +373,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                       const SizedBox(height: 4),
                       Text(
                         'In Google Cloud Console, add this exact URL under "Authorized JavaScript origins":\n${Uri.base.origin}',
-                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                        style: const TextStyle(fontSize: 12, fontFamily: AppTheme.nerdFontFamily),
                       ),
                     ],
                   ),

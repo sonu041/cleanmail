@@ -125,18 +125,39 @@ class EmailTile extends ConsumerWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            message.senderName,
-                            style: TextStyle(
-                              fontWeight: message.isRead
-                                  ? FontWeight.w500
-                                  : FontWeight.w700,
-                              fontSize: 15,
-                              color: AppTheme.textPrimary(context),
-                              fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  message.senderName,
+                                  style: TextStyle(
+                                    fontWeight: message.isRead
+                                        ? FontWeight.w500
+                                        : FontWeight.w700,
+                                    fontSize: 15,
+                                    color: AppTheme.textPrimary(context),
+                                    fontFamily: AppTheme.fontFamily(context),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (!message.isRead) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  key: const ValueKey('unread_indicator_dot'),
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.isNerd(context)
+                                        ? AppTheme.nerdPrimary
+                                        : const Color(0xFF00C853),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                         Text(
@@ -144,7 +165,7 @@ class EmailTile extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: 12,
                             color: AppTheme.textSecondary(context),
-                            fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                            fontFamily: AppTheme.fontFamily(context),
                           ),
                         ),
                       ],
@@ -160,7 +181,7 @@ class EmailTile extends ConsumerWidget {
                             : FontWeight.w600,
                         fontSize: 14,
                         color: AppTheme.textPrimary(context),
-                        fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                        fontFamily: AppTheme.fontFamily(context),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -173,7 +194,7 @@ class EmailTile extends ConsumerWidget {
                       style: TextStyle(
                         fontSize: 13,
                         color: AppTheme.textSecondary(context),
-                        fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                        fontFamily: AppTheme.fontFamily(context),
                         height: 1.3,
                       ),
                       maxLines: 2,
@@ -250,7 +271,7 @@ class EmailTile extends ConsumerWidget {
             color: AppTheme.nerdPrimary,
             fontSize: 10,
             fontWeight: FontWeight.bold,
-            fontFamily: 'monospace',
+            fontFamily: AppTheme.nerdFontFamily,
           ),
         ),
       );

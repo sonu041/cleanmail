@@ -27,7 +27,7 @@ class SettingsScreen extends ConsumerWidget {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            fontFamily: isNerd ? 'monospace' : null,
+            fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
           ),
         ),
       ),
@@ -81,7 +81,7 @@ class SettingsScreen extends ConsumerWidget {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14.5,
-                          fontFamily: isNerd ? 'monospace' : null,
+                          fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -116,7 +116,7 @@ class SettingsScreen extends ConsumerWidget {
                             fontSize: 9.5,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF00FF66),
-                            fontFamily: 'monospace',
+                            fontFamily: AppTheme.nerdFontFamily,
                           ),
                         ),
                       ),
@@ -128,7 +128,7 @@ class SettingsScreen extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: 12,
                     color: AppTheme.textSecondary(context),
-                    fontFamily: isNerd ? 'monospace' : null,
+                    fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                   ),
                 ),
                 trailing: isSelected
@@ -177,7 +177,7 @@ class SettingsScreen extends ConsumerWidget {
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14.5,
-                  fontFamily: isNerd ? 'monospace' : null,
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                 ),
               ),
               subtitle: Text(
@@ -185,7 +185,7 @@ class SettingsScreen extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 12,
                   color: AppTheme.textSecondary(context),
-                  fontFamily: isNerd ? 'monospace' : null,
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                 ),
               ),
               trailing: const Icon(Icons.arrow_forward_ios, size: 14),
@@ -231,7 +231,7 @@ class SettingsScreen extends ConsumerWidget {
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14.5,
-                  fontFamily: isNerd ? 'monospace' : null,
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                 ),
               ),
               subtitle: Text(
@@ -239,7 +239,7 @@ class SettingsScreen extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 12,
                   color: AppTheme.textSecondary(context),
-                  fontFamily: isNerd ? 'monospace' : null,
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -274,7 +274,7 @@ class SettingsScreen extends ConsumerWidget {
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14.5,
-                  fontFamily: isNerd ? 'monospace' : null,
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                 ),
               ),
               subtitle: Text(
@@ -282,7 +282,7 @@ class SettingsScreen extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 12,
                   color: AppTheme.textSecondary(context),
-                  fontFamily: isNerd ? 'monospace' : null,
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                 ),
               ),
               trailing: const Icon(Icons.edit_outlined, size: 18),
@@ -356,7 +356,7 @@ class SettingsScreen extends ConsumerWidget {
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                     color: AppTheme.textSecondary(context),
-                    fontFamily: isNerd ? 'monospace' : null,
+                    fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -365,7 +365,7 @@ class SettingsScreen extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: 11,
                     color: AppTheme.textSecondary(context).withOpacity(0.7),
-                    fontFamily: isNerd ? 'monospace' : null,
+                    fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                   ),
                 ),
               ],
@@ -392,7 +392,7 @@ class SettingsScreen extends ConsumerWidget {
             fontWeight: FontWeight.bold,
             fontSize: 14,
             color: isNerd ? AppTheme.nerdPrimary : AppTheme.textPrimary(context),
-            fontFamily: isNerd ? 'monospace' : null,
+            fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
             letterSpacing: isNerd ? 0.8 : 0,
           ),
         ),
@@ -402,7 +402,7 @@ class SettingsScreen extends ConsumerWidget {
           style: TextStyle(
             fontSize: 12,
             color: AppTheme.textSecondary(context),
-            fontFamily: isNerd ? 'monospace' : null,
+            fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
           ),
         ),
       ],
@@ -431,7 +431,7 @@ class SettingsScreen extends ConsumerWidget {
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.textPrimary(context),
-                  fontFamily: isNerd ? 'monospace' : null,
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                 ),
               ),
               const SizedBox(height: 2),
@@ -440,7 +440,7 @@ class SettingsScreen extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 12,
                   color: AppTheme.textSecondary(context),
-                  fontFamily: isNerd ? 'monospace' : null,
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                 ),
               ),
             ],
@@ -527,7 +527,7 @@ class SettingsScreen extends ConsumerWidget {
                       const SizedBox(height: 4),
                       Text(
                         'In Google Cloud Console, add this exact URL under "Authorized JavaScript origins":\n${Uri.base.origin}',
-                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                        style: const TextStyle(fontSize: 12, fontFamily: AppTheme.nerdFontFamily),
                       ),
                     ],
                   ),

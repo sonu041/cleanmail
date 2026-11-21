@@ -1,9 +1,40 @@
+import 'package:cleanmail/core/services/google_auth_service.dart';
 import 'package:cleanmail/core/services/log_service.dart';
 import 'package:cleanmail/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('Token Expiration & Storage Tests', () {
+    test('GoogleAuthService detects expired token and manages storage', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      FlutterSecureStorage.setMockInitialValues({});
+      final authService = GoogleAuthService();
+      const testAccountId = 'test_acc_exp_123';
+
+      await authService.clearStoredToken(testAccountId);
+
+      // Initially no token exists -> treated as expired
+      final initiallyExpired = await authService.isStoredTokenExpired(testAccountId);
+      expect(initiallyExpired, isTrue);
+
+      // Save a fresh token
+      await authService.saveStoredToken(testAccountId, 'sample_bearer_token');
+
+      // Stored token is now fresh (<50m)
+      final afterSaveExpired = await authService.isStoredTokenExpired(testAccountId);
+      expect(afterSaveExpired, isFalse);
+
+      final token = await authService.getStoredToken(testAccountId);
+      expect(token, equals('Bearer sample_bearer_token'));
+
+      // Clean up
+      await authService.clearStoredToken(testAccountId);
+      final afterClearExpired = await authService.isStoredTokenExpired(testAccountId);
+      expect(afterClearExpired, isTrue);
+    });
+  });
   group('LogService & AppLogger Tests', () {
     late LogService logService;
 
@@ -103,15 +134,15 @@ void main() {
       expect(AppThemeMode.fromString('dark'), equals(AppThemeMode.dark));
     });
 
-    test('Nerd theme has dark brightness, monospace font, and phosphor green primary', () {
+    test('Nerd theme has dark brightness, JetBrains Mono font, and phosphor green primary', () {
       final nerd = AppTheme.nerdTheme;
       expect(nerd.brightness, equals(Brightness.dark));
       expect(nerd.colorScheme.primary, equals(AppTheme.nerdPrimary));
       expect(nerd.colorScheme.primary, equals(const Color(0xFF00FF66)));
       expect(nerd.scaffoldBackgroundColor, equals(AppTheme.nerdBg));
-      expect(nerd.textTheme.bodyLarge?.fontFamily, equals('monospace'));
-      expect(nerd.textTheme.headlineMedium?.fontFamily, equals('monospace'));
-      expect(nerd.appBarTheme.titleTextStyle?.fontFamily, equals('monospace'));
+      expect(nerd.textTheme.bodyLarge?.fontFamily, equals(AppTheme.nerdFontFamily));
+      expect(nerd.textTheme.headlineMedium?.fontFamily, equals(AppTheme.nerdFontFamily));
+      expect(nerd.appBarTheme.titleTextStyle?.fontFamily, equals(AppTheme.nerdFontFamily));
     });
 
     test('Light and Dark themes maintain clean standard styling', () {

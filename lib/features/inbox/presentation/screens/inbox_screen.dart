@@ -69,7 +69,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
-                      fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                      fontFamily: AppTheme.fontFamily(context),
                     ),
                   ),
                   Text(
@@ -78,7 +78,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
                       fontSize: 12,
                       color: AppTheme.textSecondary(context),
                       fontWeight: FontWeight.normal,
-                      fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                      fontFamily: AppTheme.fontFamily(context),
                     ),
                   ),
                 ],

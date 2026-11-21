@@ -69,6 +69,7 @@ class GoogleAuthService {
 
   String _historyKey(String accountId) => 'gmail_history_$accountId';
   String _tokenKey(String accountId) => 'gmail_token_$accountId';
+  String _tokenTimeKey(String accountId) => 'gmail_token_time_$accountId';
 
   Future<String?> getStoredHistoryId(String accountId) async {
     return await _storage.read(key: _historyKey(accountId));
@@ -89,10 +90,38 @@ class GoogleAuthService {
   Future<void> saveStoredToken(String accountId, String token) async {
     final bearerToken = token.startsWith('Bearer ') ? token : 'Bearer $token';
     await _storage.write(key: _tokenKey(accountId), value: bearerToken);
+    await _storage.write(
+      key: _tokenTimeKey(accountId),
+      value: DateTime.now().millisecondsSinceEpoch.toString(),
+    );
   }
 
-  Future<void> clearStoredToken(String accountId) async {
+  Future<void> clearStoredToken(String accountId, [String? tokenToInvalidate]) async {
+    final token = tokenToInvalidate ?? await getStoredToken(accountId);
     await _storage.delete(key: _tokenKey(accountId));
+    await _storage.delete(key: _tokenTimeKey(accountId));
+
+    if (token != null && token.isNotEmpty) {
+      try {
+        final rawToken = token.startsWith('Bearer ') ? token.substring(7) : token;
+        await _googleSignInInstance?.clearAuthCache(token: rawToken);
+        debugPrint('Cleared Google Play Services auth cache for token.');
+      } catch (e) {
+        debugPrint('clearAuthCache note: $e');
+      }
+    }
+  }
+
+  /// Checks if the cached access token is expired (>50 minutes old).
+  /// Google OAuth2 access tokens expire after 3600 seconds (1 hour).
+  Future<bool> isStoredTokenExpired(String accountId) async {
+    final timeStr = await _storage.read(key: _tokenTimeKey(accountId));
+    if (timeStr == null) return true; // No timestamp recorded -> treat as expired
+    final timestamp = int.tryParse(timeStr);
+    if (timestamp == null) return true;
+    final ageMs = DateTime.now().millisecondsSinceEpoch - timestamp;
+    // 50 minutes buffer (Google access token lifetime is 60 minutes / 3600s)
+    return ageMs > 50 * 60 * 1000;
   }
 
   /// Fetches current mailbox historyId directly from Gmail profile.
@@ -113,28 +142,62 @@ class GoogleAuthService {
   }
 
   /// Resolves valid OAuth Bearer headers for the specified [accountId] (or the current session).
+  /// Proactively refreshes expired tokens (>50m old) and manages token caching.
   Future<Map<String, String>?> getAuthHeadersForAccount([String? accountId]) async {
-    // 1. If active currentUser matches target account, use it directly (auto-refreshes)
-    if (accountId != null && _googleSignInInstance?.currentUser != null) {
-      final current = _googleSignInInstance!.currentUser!;
-      final currentId = 'google_${current.id}';
-      if (currentId == accountId || current.email.toLowerCase() == accountId.toLowerCase()) {
-        final authHeaders = await current.authHeaders;
-        final auth = await current.authentication;
-        final headers = Map<String, String>.from(authHeaders);
-        if (!headers.containsKey('Authorization') &&
-            auth.accessToken != null &&
-            auth.accessToken!.isNotEmpty) {
-          headers['Authorization'] = 'Bearer ${auth.accessToken}';
+    final clientId = await getClientId();
+    _googleSignInInstance ??= _getGoogleSignIn(clientId);
+
+    // 1. If stored token exists and is still fresh (<50m old), use it directly
+    if (accountId != null) {
+      final isExpired = await isStoredTokenExpired(accountId);
+      if (!isExpired) {
+        final storedToken = await getStoredToken(accountId);
+        if (storedToken != null && storedToken.isNotEmpty) {
+          return {
+            'Authorization': storedToken,
+            'Accept': 'application/json',
+          };
         }
-        if (headers['Authorization'] != null) {
-          await saveStoredToken(accountId, headers['Authorization']!);
-        }
-        return headers;
       }
     }
 
-    // 2. If accountId provided, check FlutterSecureStorage for cached Bearer token
+    // 2. Token is missing or expired (>50m old): Attempt silent refresh with Google Sign-In SDK
+    try {
+      var current = _googleSignInInstance!.currentUser;
+      current ??= await _googleSignInInstance!.signInSilently();
+
+      if (current != null) {
+        final currentId = 'google_${current.id}';
+        final matchesTarget = accountId == null ||
+            currentId == accountId ||
+            current.email.toLowerCase() == accountId.toLowerCase();
+
+        if (matchesTarget) {
+          final authHeaders = await current.authHeaders;
+          final auth = await current.authentication;
+          final headers = Map<String, String>.from(authHeaders);
+          if (!headers.containsKey('Authorization') &&
+              auth.accessToken != null &&
+              auth.accessToken!.isNotEmpty) {
+            headers['Authorization'] = 'Bearer ${auth.accessToken}';
+          }
+          if (headers['Authorization'] != null) {
+            await saveStoredToken(accountId ?? currentId, headers['Authorization']!);
+            AppLogger.info(
+              'OAuth Token Refreshed',
+              'Refreshed 1-hour access token for ${current.email}',
+              category: LogCategory.auth,
+            );
+          }
+          return headers;
+        }
+      }
+    } catch (e) {
+      debugPrint('Silent token refresh attempt note: $e');
+    }
+
+    // 3. Fallback: if silent refresh couldn't match a different accountId,
+    // check if a stored token exists anyway as last resort
     if (accountId != null) {
       final storedToken = await getStoredToken(accountId);
       if (storedToken != null && storedToken.isNotEmpty) {
@@ -145,7 +208,7 @@ class GoogleAuthService {
       }
     }
 
-    // 3. Fallback to active Google Sign-In session
+    // 4. Fallback to active Google Sign-In session
     return await _getValidAuthHeaders();
   }
 
@@ -210,6 +273,20 @@ class GoogleAuthService {
       }
       return response.statusCode == 200;
     } catch (e) {
+      if (e is DioException && e.response?.statusCode == 401 && accountId != null) {
+        debugPrint('401 in trashGmailMessage for $remoteMessageId. Attempting automatic recovery...');
+        await clearStoredToken(accountId);
+        final refreshedHeaders = await getAuthHeadersForAccount(accountId);
+        if (refreshedHeaders != null) {
+          try {
+            final retryRes = await _dio.post(
+              'https://gmail.googleapis.com/gmail/v1/users/me/messages/$remoteMessageId/trash',
+              options: Options(headers: refreshedHeaders),
+            );
+            return retryRes.statusCode == 200;
+          } catch (_) {}
+        }
+      }
       debugPrint('Error trashing Gmail message $remoteMessageId: $e');
       AppLogger.error('Trash Sync Error', 'Failed to trash $remoteMessageId: $e', category: LogCategory.triage);
       return false;
@@ -285,17 +362,17 @@ class GoogleAuthService {
     List<String>? removeLabelIds,
     String? accountId,
   }) async {
+    final data = <String, dynamic>{};
+    if (addLabelIds != null && addLabelIds.isNotEmpty) {
+      data['addLabelIds'] = addLabelIds;
+    }
+    if (removeLabelIds != null && removeLabelIds.isNotEmpty) {
+      data['removeLabelIds'] = removeLabelIds;
+    }
+
     try {
       final headers = await getAuthHeadersForAccount(accountId);
       if (headers == null) return false;
-
-      final data = <String, dynamic>{};
-      if (addLabelIds != null && addLabelIds.isNotEmpty) {
-        data['addLabelIds'] = addLabelIds;
-      }
-      if (removeLabelIds != null && removeLabelIds.isNotEmpty) {
-        data['removeLabelIds'] = removeLabelIds;
-      }
 
       final response = await _dio.post(
         'https://gmail.googleapis.com/gmail/v1/users/me/messages/$remoteMessageId/modify',
@@ -309,6 +386,21 @@ class GoogleAuthService {
       }
       return response.statusCode == 200;
     } catch (e) {
+      if (e is DioException && e.response?.statusCode == 401 && accountId != null) {
+        debugPrint('401 in modifyGmailMessageLabels for $remoteMessageId. Attempting automatic recovery...');
+        await clearStoredToken(accountId);
+        final refreshedHeaders = await getAuthHeadersForAccount(accountId);
+        if (refreshedHeaders != null) {
+          try {
+            final retryRes = await _dio.post(
+              'https://gmail.googleapis.com/gmail/v1/users/me/messages/$remoteMessageId/modify',
+              data: data,
+              options: Options(headers: refreshedHeaders),
+            );
+            return retryRes.statusCode == 200;
+          } catch (_) {}
+        }
+      }
       debugPrint('Error modifying Gmail labels for $remoteMessageId: $e');
       AppLogger.error('Label Modify Error', 'Failed to update labels on $remoteMessageId: $e', category: LogCategory.triage);
       return false;
@@ -520,6 +612,30 @@ class GoogleAuthService {
         messageRepo: messageRepo,
         authHeaders: headers,
       );
+    } on DioException catch (e) {
+      // Automatic 401 retry: clear dead token, silent re-auth, retry once
+      if (e.response?.statusCode == 401) {
+        debugPrint('401 detected in resyncAccount for ${account.email}. Attempting automatic token recovery...');
+        await clearStoredToken(account.id);
+        final refreshedHeaders = await getAuthHeadersForAccount(account.id);
+        if (refreshedHeaders != null) {
+          try {
+            AppLogger.info(
+              'Token Auto-Refreshed',
+              'Auto-recovered from 401 and retrying sync for ${account.email}',
+              category: LogCategory.auth,
+            );
+            return await syncGmailHistory(
+              account: account,
+              messageRepo: messageRepo,
+              authHeaders: refreshedHeaders,
+            );
+          } catch (retryErr) {
+            return (syncedCount: 0, error: _formatErrorMessage(retryErr));
+          }
+        }
+      }
+      return (syncedCount: 0, error: _formatErrorMessage(e));
     } catch (e) {
       return (syncedCount: 0, error: _formatErrorMessage(e));
     }

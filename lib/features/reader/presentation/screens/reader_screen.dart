@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../domain/models/message.dart';
@@ -20,6 +21,7 @@ class ReaderScreen extends ConsumerStatefulWidget {
 class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   MailMessage? _message;
   bool _isLoading = true;
+  bool _isSenderExpanded = false;
 
   // Movable Floating Delete Button State
   Offset? _buttonPosition;
@@ -115,78 +117,138 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     ),
                     const SizedBox(height: 14),
 
-            // Sender & Date Card
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.surface(context),
-                borderRadius: BorderRadius.circular(AppTheme.isNerd(context) ? 4 : 10),
-                border: Border.all(
-                  color: AppTheme.border(context),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 16,
-                        backgroundColor: AppTheme.isNerd(context)
-                            ? const Color(0xFF003814)
-                            : AppTheme.lightPrimary.withOpacity(0.2),
-                        child: Text(
-                          msg.senderName.isNotEmpty
-                              ? msg.senderName[0].toUpperCase()
-                              : '?',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.isNerd(context) ? AppTheme.nerdPrimary : AppTheme.lightPrimary,
-                            fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+            // Sender & Date Card (Tappable to expand / collapse)
+            Material(
+              color: AppTheme.surface(context),
+              borderRadius: BorderRadius.circular(isNerd ? 4 : 10),
+              child: InkWell(
+                key: const ValueKey('reader_sender_box'),
+                onTap: () {
+                  setState(() {
+                    _isSenderExpanded = !_isSenderExpanded;
+                  });
+                },
+                borderRadius: BorderRadius.circular(isNerd ? 4 : 10),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(isNerd ? 4 : 10),
+                    border: Border.all(
+                      color: AppTheme.border(context),
+                    ),
+                  ),
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Collapsed Header Row
+                        Row(
                           children: [
-                            Text(
-                              msg.senderName,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: AppTheme.textPrimary(context),
-                                fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundColor: isNerd
+                                  ? const Color(0xFF003814)
+                                  : AppTheme.lightPrimary.withOpacity(0.2),
+                              child: Text(
+                                msg.senderName.isNotEmpty
+                                    ? msg.senderName[0].toUpperCase()
+                                    : '?',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: isNerd ? AppTheme.nerdPrimary : AppTheme.lightPrimary,
+                                  fontFamily: AppTheme.fontFamily(context),
+                                ),
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
-                            Text(
-                              msg.senderEmail,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppTheme.textSecondary(context),
-                                fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    msg.senderName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                      color: AppTheme.textPrimary(context),
+                                      fontFamily: AppTheme.fontFamily(context),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    msg.senderEmail,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.textSecondary(context),
+                                      fontFamily: AppTheme.fontFamily(context),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(width: 8),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _formatShortDate(msg.receivedAt),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textSecondary(context),
+                                    fontFamily: AppTheme.fontFamily(context),
+                                  ),
+                                ),
+                                const SizedBox(width: 2),
+                                Icon(
+                                  _isSenderExpanded
+                                      ? Icons.keyboard_arrow_up
+                                      : Icons.keyboard_arrow_down,
+                                  size: 18,
+                                  color: AppTheme.textSecondary(context),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _formatFullDate(msg.receivedAt),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.textSecondary(context),
-                          fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
-                        ),
-                      ),
-                    ],
+
+                        // Expanded Full Details on separate lines
+                        if (_isSenderExpanded) ...[
+                          const SizedBox(height: 12),
+                          Divider(
+                            color: AppTheme.border(context),
+                            height: 1,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildDetailLine(
+                            context,
+                            label: isNerd ? 'FROM:' : 'Sender Name:',
+                            value: msg.senderName,
+                            isNerd: isNerd,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildDetailLine(
+                            context,
+                            label: isNerd ? 'EMAIL:' : 'Email Address:',
+                            value: msg.senderEmail,
+                            isNerd: isNerd,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildDetailLine(
+                            context,
+                            label: isNerd ? 'DATE & TIME:' : 'Date & Time:',
+                            value: _formatFullDate(msg.receivedAt, isNerd),
+                            isNerd: isNerd,
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
 
@@ -212,7 +274,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 fontSize: 15.5,
                 height: 1.65,
                 color: AppTheme.textPrimary(context),
-                fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                fontFamily: AppTheme.fontFamily(context),
                 fontFamilyFallback: const ['Roboto', 'Segoe UI', 'sans-serif'],
               ),
             ),
@@ -240,7 +302,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                         style: TextStyle(
                           fontSize: 11,
                           color: AppTheme.textSecondary(context),
-                          fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                          fontFamily: AppTheme.fontFamily(context),
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -465,7 +527,58 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     }
   }
 
-  String _formatFullDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  Widget _buildDetailLine(
+    BuildContext context, {
+    required String label,
+    required String value,
+    required bool isNerd,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: isNerd ? AppTheme.nerdAccentCyan : AppTheme.textSecondary(context),
+            fontFamily: AppTheme.fontFamily(context),
+            letterSpacing: isNerd ? 0.6 : 0,
+          ),
+        ),
+        const SizedBox(height: 2),
+        SelectableText(
+          value.isNotEmpty ? value : '(None)',
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w500,
+            color: AppTheme.textPrimary(context),
+            fontFamily: AppTheme.fontFamily(context),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatShortDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inMinutes < 60) {
+      return '${difference.inMinutes.clamp(1, 60)}m';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d';
+    } else {
+      return '${date.month}/${date.day}';
+    }
+  }
+
+  String _formatFullDate(DateTime date, bool isNerd) {
+    if (isNerd) {
+      return DateFormat('yyyy-MM-dd HH:mm:ss').format(date);
+    }
+    return DateFormat('EEEE, MMM d, yyyy • h:mm a').format(date);
   }
 }

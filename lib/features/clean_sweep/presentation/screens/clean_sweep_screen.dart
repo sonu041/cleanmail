@@ -45,7 +45,7 @@ class CleanSweepScreen extends ConsumerWidget {
                     'All active senders have zero remaining messages.',
                     style: TextStyle(
                       color: AppTheme.textSecondary(context),
-                      fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                      fontFamily: AppTheme.fontFamily(context),
                     ),
                   ),
                 ],
@@ -100,7 +100,7 @@ class CleanSweepScreen extends ConsumerWidget {
                             style: TextStyle(
                               fontSize: 12,
                               color: AppTheme.textSecondary(context),
-                              fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                              fontFamily: AppTheme.fontFamily(context),
                             ),
                           ),
                         ],

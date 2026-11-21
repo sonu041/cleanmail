@@ -19,7 +19,7 @@ enum AppThemeMode {
   ),
   nerd(
     'Terminal Nerd',
-    'Retro hacker console, CRT phosphor green & monospace',
+    'Retro hacker console, CRT phosphor green & JetBrains Mono',
     Icons.terminal_outlined,
   );
 
@@ -77,8 +77,16 @@ class AppTheme {
   // CONTEXT-AWARE THEME GETTERS
   // --------------------------------------------------------------------------
 
+  /// Developer / terminal font used in Nerd mode.
+  static const String nerdFontFamily = 'JetBrainsMono';
+
   static bool isNerd(BuildContext context) {
     return Theme.of(context).colorScheme.primary == nerdPrimary;
+  }
+
+  /// Returns JetBrains Mono if in Nerd theme, or null for default system sans-serif.
+  static String? fontFamily(BuildContext context) {
+    return isNerd(context) ? nerdFontFamily : null;
   }
 
   static Color textPrimary(BuildContext context) {
@@ -221,9 +229,9 @@ class AppTheme {
     );
   }
 
-  /// Retro Terminal / Hacker Nerd Theme with phosphor green matrix and monospace typography.
+  /// Retro Terminal / Hacker Nerd Theme with phosphor green matrix and JetBrains Mono developer typography.
   static ThemeData get nerdTheme {
-    const monoFamily = 'monospace';
+    const monoFamily = nerdFontFamily;
 
     return ThemeData(
       useMaterial3: true,
