@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/services/google_auth_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../domain/models/account.dart';
 import '../../../../domain/models/category.dart';
@@ -131,7 +130,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
             child: RefreshIndicator(
               onRefresh: () async {
                 final accounts = ref.read(accountsStreamProvider).asData?.value ?? [];
-                final googleAuth = GoogleAuthService();
+                final googleAuth = ref.read(googleAuthServiceProvider);
                 final messageRepo = ref.read(messageRepositoryProvider);
                 for (final acc in accounts) {
                   if (acc.provider == MailProvider.gmail) {

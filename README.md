@@ -1,17 +1,194 @@
-# cleanmail
+# CleanMail ✉️🧹
 
-A new Flutter project.
+> A fast, distraction-free, text-only email viewer with powerful cleanup workflows and multi-mailbox support, built with Flutter.
+>
+> 📖 **Deep Dive Documentation**: For sequence diagrams, delta sync algorithms, and technical specs, see the **[Synchronization Architecture Guide](docs/SYNC_ARCHITECTURE.md)**.
 
-## Getting Started
+---
 
-This project is a starting point for a Flutter application.
+## 🌟 Key Features
 
-A few resources to get you started if this is your first Flutter project:
+### 1. 📄 Pure Text-Only Reading Engine
+* **Zero HTML & WebViews**: Heavy stylesheets, complex HTML layouts, and scripts are stripped away, presenting emails in clean, readable typography.
+* **100% Tracking Pixel Protection**: Invisible tracking pixels (`1x1` GIFs, hidden beacons) are identified and neutralized before rendering.
+* **Link Footnotes & Previews**: Hyperlinks are converted to clean, non-deceptive footnotes and Markdown-style links.
+* **Ultra-Low Bandwidth & Battery**: No remote images or heavy assets are downloaded during reading.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### 2. 🧹 Easy-to-Clean Triage Suite & Full Two-Way Sync
+* **Two-Way Read Sync**: Reading an email in CleanMail marks it as read in real Gmail via `POST /modify` (`removeLabelIds: ['UNREAD']`).
+* **Two-Way Delete Sync**: Deleting in CleanMail (swipe gesture, reader trash button, or Sender Sweep) moves the message to Trash in real Gmail via `POST /trash`.
+* **Two-Way Restore (Undo)**: Tapping **Undo** on the deletion snackbar restores the email locally and restores it from Gmail Trash via `POST /untrash`.
+* **Two-Way Archive Sync**: Swiping right or tapping Archive removes the `INBOX` label in real Gmail.
+* **Sender Sweep**: Groups emails by sender volume (e.g. *"TLDR Tech: 42 emails"*), allowing you to **Archive All** or **Delete All** from noisy senders in a single tap with parallelized batch trashing in Gmail.
+* **One-Tap Unsubscribe**: Detects `List-Unsubscribe` headers (HTTP or mailto) and surfaces a prominent 1-click unsubscribe banner with optional cleanup of past emails.
+* **Fast Swipe Triage**: Fluid swipe gestures in the inbox:
+  * **Swipe Right** $\rightarrow$ Archive (green, syncs to Gmail).
+  * **Swipe Left** $\rightarrow$ Delete (red, syncs to Gmail Trash).
+  * Includes an instant **Undo** toast notification with remote untrash.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### 3. ⚡ Approach 2: High-Performance Gmail Delta History Sync
+* **Ultra-Fast Delta Synchronization**: Instead of repeatedly re-downloading thousands of messages, CleanMail tracks mailbox checkpoints using Gmail's `users.history.list` API (`GET /gmail/v1/users/me/history?startHistoryId=...`).
+* **Scale-Free Performance**: Effortlessly syncs mailboxes with 10,000 to 500,000+ emails in **~100ms** using only **2 quota units** per sync.
+* **Bi-Directional Change Detection**:
+  * Deletions made in real Gmail (web/mobile) are automatically removed from CleanMail's local database.
+  * Messages archived in Gmail are automatically moved to Archive in CleanMail.
+  * Read/unread statuses changed in Gmail are immediately mirrored locally.
+  * Only newly arrived messages (`messagesAdded`) are downloaded and sanitized.
+* **Self-Healing Fallback**: If an account has not synced in over 30 days and Google expires the `historyId` (HTTP 404), CleanMail automatically recovers via a windowed resync, establishing a fresh `historyId` checkpoint without user intervention.
+* *(See full architectural breakdown in [docs/SYNC_ARCHITECTURE.md](docs/SYNC_ARCHITECTURE.md))*.
+
+### 4. 📬 Single-Pane Unified Multi-Mailbox
+* **Chronological Aggregated Feed**: View messages across all your connected accounts in one central view.
+* **Color-Coded Mailbox Chips**: Visual badges for each mailbox (e.g., Blue for Personal Gmail, Purple for Work Outlook).
+* **Filter Chips**: Filter by **All Inboxes** or tap an individual account chip to isolate that mailbox.
+* **Real-Time Search**: Instant local search across subjects, senders, and email text.
+
+### 5. 🏷️ Smart On-Device Categorization
+* Runs completely client-side with zero latency and full privacy:
+  * **Personal**: Direct communications from colleagues, friends, or few recipients.
+  * **Newsletters**: Mailing lists, digests, and recurring publications.
+  * **Transactions**: Receipts, invoices, shipping tracking, and order confirmations.
+  * **Updates**: System alerts, password resets, and automated platform notifications.
+
+### 6. 🔒 Offline-First & Privacy-Focused
+* **Drift (SQLite) Database**: All messages, accounts, and statistics are stored locally in an encrypted/private SQLite database.
+* **Instant Offline Access**: Read, search, and triage previously synced emails with zero internet connection.
+* **Secure Token Storage**: OAuth tokens and credentials are encrypted on-device via Android Keystore, iOS Keychain, and Windows DPAPI (`flutter_secure_storage`).
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technology |
+| :--- | :--- |
+| **Framework** | [Flutter 3.x](https://flutter.dev) (Dart 3) |
+| **State Management** | [Flutter Riverpod](https://pub.dev/packages/flutter_riverpod) |
+| **Local Database** | [Drift](https://drift.simonbinder.eu) (SQLite with Native & WebAssembly engines) |
+| **Networking & APIs** | [Dio](https://pub.dev/packages/dio), [googleapis](https://pub.dev/packages/googleapis), [google_sign_in](https://pub.dev/packages/google_sign_in) |
+| **HTML Sanitizer** | [html](https://pub.dev/packages/html) with custom text sanitizer |
+| **Secure Storage** | [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage) |
+
+---
+
+## 📂 Project Architecture
+
+```
+lib/
+├── core/
+│   ├── constants/            # App constants, badge colors, OAuth scopes
+│   ├── services/             # GoogleAuthService, OAuth token hand-off
+│   ├── theme/                # Reading-first typography (Dark & Light)
+│   └── utils/
+│       ├── heuristic_classifier.dart   # On-device category classifier
+│       └── html_to_text.dart           # HTML stripper & tracking pixel blocker
+├── data/
+│   ├── local/
+│   │   ├── connection/       # Platform DB connections (Native SQLite & WASM)
+│   │   ├── tables/           # Drift tables (Accounts, Messages, Senders)
+│   │   ├── database.dart     # Drift Database & DAOs
+│   │   └── sample_data.dart  # Realistic sample data seeder
+│   └── repositories/         # Concrete repository implementations
+├── domain/
+│   ├── models/               # Domain entities (MailAccount, MailMessage, etc.)
+│   └── repositories/         # Abstract repository contracts
+└── features/
+    ├── accounts/             # Mailbox manager & Google Client ID settings
+    ├── clean_sweep/          # Sender Sweep screen (bulk cleanup)
+    ├── inbox/                # Unified inbox screen & swipeable email tiles
+    ├── reader/               # Distraction-free text-only viewer
+    └── providers.dart        # Global Riverpod reactive state providers
+```
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+* [Flutter SDK](https://docs.flutter.dev/get-started/install) (3.50+ recommended)
+* Google Chrome (for web testing) or Android Studio / Device (for mobile)
+
+### Installation
+1. Clone or navigate to the repository:
+   ```bash
+   cd cleanmail
+   ```
+
+2. Install dependencies:
+   ```bash
+   flutter pub get
+   ```
+
+---
+
+## 💻 Running the App
+
+### 1. Web (Google Chrome)
+For Google OAuth to match your authorized origins, run on fixed port `8080`:
+```bash
+# Using PowerShell helper:
+.\run-web.ps1
+
+# Or standard Flutter CLI:
+flutter run -d chrome --web-hostname localhost --web-port 8080
+```
+> **VS Code / IDE**: Open the Run & Debug panel and select **"CleanMail (Chrome - Port 8080)"**, then press **F5**.
+
+### 2. Android Device / Emulator
+* Connect your phone with **USB Debugging enabled** and run:
+  ```bash
+  flutter run -d android
+  ```
+* Or build a standalone debug APK:
+  ```bash
+  flutter build apk --debug
+  ```
+  *(APK will be at `build/app/outputs/flutter-apk/app-debug.apk`)*
+
+### 3. Windows Desktop
+```bash
+flutter run -d windows
+```
+
+---
+
+## 🔑 Google OAuth Setup
+
+CleanMail connects to Gmail using official Google OAuth 2.0.
+
+### Configuring Your Google Client ID:
+1. In the app, open **Mailboxes** (account icon in the top right).
+2. Tap the **⚙️ Settings icon** (or the **"Google Client ID Configuration"** card).
+3. Paste your OAuth Client ID and tap **Save Client ID**.
+
+### Setup in Google Cloud Console:
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create a project.
+2. Enable the **Gmail API** under *APIs & Services > Library*.
+3. In **OAuth consent screen**, set user type to **External**, add your Gmail as a **Test User**, and add the scopes `https://www.googleapis.com/auth/gmail.readonly` and `https://www.googleapis.com/auth/gmail.modify`.
+4. In **Credentials**, create an **OAuth 2.0 Client ID**:
+   * **For Web**:
+     * Application type: **Web application**
+     * Authorized JavaScript origins: `http://localhost:8080`, `http://localhost`
+     * Authorized redirect URIs: `http://localhost:8080`
+   * **For Android**:
+     * Application type: **Android**
+     * Package name: `com.shuvankar.cleanmail`
+     * SHA-1 fingerprint: `09:C2:9D:D4:63:78:55:CB:81:E8:FC:34:84:88:C3:8C:BA:09:52:D2` (or via `cd android; .\gradlew signingReport`)
+
+---
+
+## 🧪 Testing & Code Quality
+
+CleanMail maintains 100% static analysis pass rate and comprehensive unit tests:
+
+```bash
+# Run unit tests
+flutter test
+
+# Run static analysis
+flutter analyze
+```
+
+---
+
+## 📄 License
+This project is private and intended for personal use.

@@ -1,4 +1,4 @@
-package com.shuvankar.cleanmail.cleanmail
+package com.shuvankar.cleanmail
 
 import io.flutter.embedding.android.FlutterActivity
 

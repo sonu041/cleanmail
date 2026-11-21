@@ -92,6 +92,64 @@ class AppDatabase extends _$AppDatabase {
     await (delete(messagesTable)..where((m) => m.id.equals(id))).go();
   }
 
+  Future<int> deleteMessageByRemoteId(String remoteId) {
+    return (delete(messagesTable)..where((m) => m.remoteMessageId.equals(remoteId))).go();
+  }
+
+  Future<int> deleteMessagesByRemoteIds(List<String> remoteIds) {
+    if (remoteIds.isEmpty) return Future.value(0);
+    return (delete(messagesTable)..where((m) => m.remoteMessageId.isIn(remoteIds))).go();
+  }
+
+  Future<MessageEntry?> getMessageByRemoteId(String remoteId) {
+    return (select(messagesTable)..where((m) => m.remoteMessageId.equals(remoteId))).getSingleOrNull();
+  }
+
+  Future<List<MessageEntry>> getMessagesBySenderEmail(String senderEmail) {
+    return (select(messagesTable)..where((m) => m.senderEmail.equals(senderEmail))).get();
+  }
+
+  Future<int> markMessageReadByRemoteId(String remoteId, bool isRead) {
+    return (update(messagesTable)..where((m) => m.remoteMessageId.equals(remoteId))).write(
+      MessagesTableCompanion(isRead: Value(isRead)),
+    );
+  }
+
+  Future<int> archiveMessageByRemoteId(String remoteId, bool isArchived) {
+    return (update(messagesTable)..where((m) => m.remoteMessageId.equals(remoteId))).write(
+      MessagesTableCompanion(isArchived: Value(isArchived)),
+    );
+  }
+
+  /// Returns a set of all remoteMessageIds currently stored for an account.
+  Future<Set<String>> getExistingRemoteMessageIds(String accountId) async {
+    final query = selectOnly(messagesTable)
+      ..addColumns([messagesTable.remoteMessageId])
+      ..where(messagesTable.accountId.equals(accountId));
+    final rows = await query.get();
+    return rows
+        .map((r) => r.read(messagesTable.remoteMessageId))
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+  }
+
+  /// Removes any duplicate messages for the same (account_id, remote_message_id),
+  /// keeping only one entry per remote message.
+  Future<int> deduplicateMessages() async {
+    return customUpdate(
+      '''
+      DELETE FROM messages_table
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM messages_table
+        GROUP BY account_id, remote_message_id
+      )
+      ''',
+      updates: {messagesTable},
+    );
+  }
+
   // ----------------------------------------------------
   // EASY-TO-CLEAN: SENDER SWEEP OPERATIONS
   // ----------------------------------------------------

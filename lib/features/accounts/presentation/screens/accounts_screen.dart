@@ -28,9 +28,9 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     super.initState();
     _initGsi();
     _googleAuth.onCurrentUserChanged.listen((googleAccount) async {
-      if (googleAccount != null && mounted) {
+      if (googleAccount != null && mounted && !_isConnecting) {
         final accounts = await ref.read(accountRepositoryProvider).getAccounts();
-        final alreadyAdded = accounts.any((a) => a.email == googleAccount.email);
+        final alreadyAdded = accounts.any((a) => a.email.toLowerCase() == googleAccount.email.toLowerCase());
         if (!alreadyAdded) {
           _handleConnectGoogle(preAuthenticatedAccount: googleAccount);
         }
@@ -234,37 +234,40 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
 
       if (!mounted) return;
 
-      if (result.account != null) {
-        if (result.error != null) {
-          showDialog(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
-                  SizedBox(width: 8),
-                  Text('Signed In, Sync Failed', style: TextStyle(fontSize: 16)),
-                ],
-              ),
-              content: Text(
-                'Signed in as ${result.account!.email}, but Gmail sync failed:\n\n${result.error}',
-              ),
-              actions: [
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('OK'),
-                ),
+      if (result.error != null) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+                SizedBox(width: 8),
+                Text('Google Sign-In Notice', style: TextStyle(fontSize: 16)),
               ],
             ),
-          );
-        } else {
-          messenger.showSnackBar(
-            SnackBar(
-              content: Text('Connected ${result.account!.email} and synced ${result.syncedCount} emails!'),
-              backgroundColor: AppTheme.archiveColor,
+            content: SelectableText(
+              result.account != null
+                  ? 'Signed in as ${result.account!.email}, but Gmail sync failed:\n\n${result.error}'
+                  : result.error!,
             ),
-          );
-        }
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      } else if (result.account != null) {
+        final message = result.isAlreadyConnected
+            ? '${result.account!.email} is already connected. Re-synced ${result.syncedCount} emails.'
+            : 'Connected ${result.account!.email} and synced ${result.syncedCount} emails!';
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: AppTheme.archiveColor,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -307,7 +310,11 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
       } else {
         messenger.showSnackBar(
           SnackBar(
-            content: Text('Synced ${result.syncedCount} new emails from ${account.email}!'),
+            content: Text(
+              result.syncedCount > 0
+                  ? 'Delta Sync complete: synced ${result.syncedCount} changes for ${account.email}!'
+                  : 'Delta Sync complete: ${account.email} is already up to date!',
+            ),
             backgroundColor: AppTheme.archiveColor,
           ),
         );
@@ -449,6 +456,8 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
 
                 if (confirm == true) {
                   await ref.read(accountRepositoryProvider).deleteAccount(account.id);
+                  await _googleAuth.clearStoredHistoryId(account.id);
+                  await _googleAuth.clearStoredToken(account.id);
                 }
               },
             ),

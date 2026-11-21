@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/services/google_auth_service.dart';
 import '../data/local/database.dart';
 import '../data/repositories/account_repository_impl.dart';
 import '../data/repositories/message_repository_impl.dart';
@@ -6,6 +7,11 @@ import '../domain/models/account.dart';
 import '../domain/models/category.dart';
 import '../domain/models/message.dart';
 import '../domain/models/sender_summary.dart';
+
+// Google Auth & Remote Sync Service provider
+final googleAuthServiceProvider = Provider<GoogleAuthService>((ref) {
+  return GoogleAuthService();
+});
 
 // Database instance provider
 final databaseProvider = Provider<AppDatabase>((ref) {
@@ -22,7 +28,8 @@ final accountRepositoryProvider = Provider<AccountRepositoryImpl>((ref) {
 
 final messageRepositoryProvider = Provider<MessageRepositoryImpl>((ref) {
   final db = ref.watch(databaseProvider);
-  return MessageRepositoryImpl(db);
+  final googleAuth = ref.watch(googleAuthServiceProvider);
+  return MessageRepositoryImpl(db, googleAuth);
 });
 
 // Accounts stream

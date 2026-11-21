@@ -73,7 +73,7 @@ class EmailTile extends ConsumerWidget {
               action: SnackBarAction(
                 label: 'Undo',
                 onPressed: () {
-                  messageRepo.saveMessages([message]);
+                  messageRepo.restoreMessage(message);
                 },
               ),
               duration: const Duration(seconds: 4),

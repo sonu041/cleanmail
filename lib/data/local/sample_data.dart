@@ -1,4 +1,3 @@
-import 'package:uuid/uuid.dart';
 import '../../domain/models/account.dart';
 import '../../domain/models/category.dart';
 import '../../domain/models/message.dart';
@@ -6,8 +5,6 @@ import '../repositories/account_repository_impl.dart';
 import '../repositories/message_repository_impl.dart';
 
 class SampleDataSeeder {
-  static const _uuid = Uuid();
-
   static Future<void> seedIfEmpty({
     required AccountRepositoryImpl accountRepo,
     required MessageRepositoryImpl messageRepo,
@@ -45,7 +42,7 @@ class SampleDataSeeder {
     final sampleMessages = [
       // --- NEWSLETTERS (With Unsubscribe options & multiple emails for Sender Sweep) ---
       MailMessage(
-        id: _uuid.v4(),
+        id: '${personalAccount.id}_msg_001',
         accountId: personalAccount.id,
         remoteMessageId: 'msg_001',
         senderEmail: 'digest@tldr.tech',
@@ -73,7 +70,7 @@ Use the 1-tap unsubscribe button above or visit: https://tldr.tech/unsubscribe?i
       ),
 
       MailMessage(
-        id: _uuid.v4(),
+        id: '${personalAccount.id}_msg_002',
         accountId: personalAccount.id,
         remoteMessageId: 'msg_002',
         senderEmail: 'digest@tldr.tech',
@@ -93,7 +90,7 @@ Read more at https://tldr.tech/archive/2026-11-19''',
       ),
 
       MailMessage(
-        id: _uuid.v4(),
+        id: '${personalAccount.id}_msg_003',
         accountId: personalAccount.id,
         remoteMessageId: 'msg_003',
         senderEmail: 'newsletter@bytes.dev',
@@ -120,7 +117,7 @@ Unsubscribe: https://bytes.dev/unsub?user=alex''',
       ),
 
       MailMessage(
-        id: _uuid.v4(),
+        id: '${personalAccount.id}_msg_004',
         accountId: personalAccount.id,
         remoteMessageId: 'msg_004',
         senderEmail: 'promo@shopdeals.com',
@@ -142,7 +139,7 @@ Unsubscribe: https://shopdeals.com/optout''',
       ),
 
       MailMessage(
-        id: _uuid.v4(),
+        id: '${personalAccount.id}_msg_005',
         accountId: personalAccount.id,
         remoteMessageId: 'msg_005',
         senderEmail: 'promo@shopdeals.com',
@@ -162,7 +159,7 @@ Return to cart: https://shopdeals.com/cart''',
 
       // --- TRANSACTIONS (Receipts, Invoices, Billing) ---
       MailMessage(
-        id: _uuid.v4(),
+        id: '${personalAccount.id}_msg_006',
         accountId: personalAccount.id,
         remoteMessageId: 'msg_006',
         senderEmail: 'receipts@uber.com',
@@ -190,7 +187,7 @@ Need help with this trip? Contact support at https://help.uber.com''',
       ),
 
       MailMessage(
-        id: _uuid.v4(),
+        id: '${workAccount.id}_msg_007',
         accountId: workAccount.id,
         remoteMessageId: 'msg_007',
         senderEmail: 'billing@github.com',
@@ -215,7 +212,7 @@ Download full PDF tax invoice: https://github.com/organizations/InnovateCorp/bil
 
       // --- PERSONAL (Direct communications) ---
       MailMessage(
-        id: _uuid.v4(),
+        id: '${workAccount.id}_msg_008',
         accountId: workAccount.id,
         remoteMessageId: 'msg_008',
         senderEmail: 'sarah.miller@innovatecorp.com',
@@ -239,7 +236,7 @@ Sarah''',
       ),
 
       MailMessage(
-        id: _uuid.v4(),
+        id: '${personalAccount.id}_msg_009',
         accountId: personalAccount.id,
         remoteMessageId: 'msg_009',
         senderEmail: 'marcus.dev@gmail.com',
@@ -262,7 +259,7 @@ Marcus''',
 
       // --- UPDATES (Notifications, Security Alerts) ---
       MailMessage(
-        id: _uuid.v4(),
+        id: '${workAccount.id}_msg_010',
         accountId: workAccount.id,
         remoteMessageId: 'msg_010',
         senderEmail: 'notifications@github.com',
