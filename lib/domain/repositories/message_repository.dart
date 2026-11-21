@@ -8,18 +8,25 @@ abstract class MessageRepository {
     MailCategory? category,
   });
 
+  Stream<Map<String, int>> watchMessageCountsByAccount();
+  Stream<Map<String, int>> watchMessageCountsByCategory({String? accountId});
+  Stream<int> watchUnreadCount({String? accountId, String? category});
+
   Future<MailMessage?> getMessage(String id);
   Future<void> saveMessages(List<MailMessage> messages);
   Future<void> markRead(String messageId, bool isRead);
   Future<void> archive(String messageId, bool isArchived);
   Future<void> delete(String messageId);
+  Future<List<MailMessage>> deleteMultiple(List<String> messageIds);
   Future<void> restoreMessage(MailMessage message);
+  Future<void> restoreMessages(List<MailMessage> messages);
 
   // Delta History & Remote Sync operations
   Future<int> deleteMessagesByRemoteIds(List<String> remoteIds);
   Future<void> markMessageReadByRemoteId(String remoteId, bool isRead);
   Future<void> archiveMessageByRemoteId(String remoteId, bool isArchived);
   Future<Set<String>> getExistingRemoteMessageIds(String accountId);
+  Future<DateTime?> getOldestMessageTimestamp([String? accountId]);
   Future<int> deduplicateMessages();
 
   // Easy-to-clean: Sender Sweep

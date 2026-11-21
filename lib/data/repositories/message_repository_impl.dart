@@ -32,6 +32,21 @@ class MessageRepositoryImpl implements MessageRepository {
   }
 
   @override
+  Stream<Map<String, int>> watchMessageCountsByAccount() {
+    return _db.watchMessageCountsByAccount();
+  }
+
+  @override
+  Stream<Map<String, int>> watchMessageCountsByCategory({String? accountId}) {
+    return _db.watchMessageCountsByCategory(accountId: accountId);
+  }
+
+  @override
+  Stream<int> watchUnreadCount({String? accountId, String? category}) {
+    return _db.watchUnreadCount(accountId: accountId, category: category);
+  }
+
+  @override
   Future<MailMessage?> getMessage(String id) async {
     final entry = await _db.getMessageById(id);
     return entry != null ? _mapToDomain(entry) : null;
@@ -123,6 +138,42 @@ class MessageRepositoryImpl implements MessageRepository {
   }
 
   @override
+  Future<List<MailMessage>> deleteMultiple(List<String> messageIds) async {
+    if (messageIds.isEmpty) return [];
+
+    final entries = await _db.getMessagesByIds(messageIds);
+    final deletedMessages = entries.map(_mapToDomain).toList();
+    final byAccount = <String, List<String>>{};
+
+    for (final entry in entries) {
+      if (entry.remoteMessageId.isNotEmpty) {
+        byAccount.putIfAbsent(entry.accountId, () => []).add(entry.remoteMessageId);
+      }
+    }
+
+    await _db.deleteMessages(messageIds);
+
+    AppLogger.success(
+      'Batch Delete',
+      'Deleted ${deletedMessages.length} emails across ${byAccount.length} mailboxes',
+      category: LogCategory.triage,
+      metadata: {'count': deletedMessages.length},
+    );
+
+    // Two-way delete sync: move messages to Trash in Gmail
+    for (final entry in byAccount.entries) {
+      for (final remoteId in entry.value) {
+        _googleAuth.trashGmailMessage(
+          remoteMessageId: remoteId,
+          accountId: entry.key,
+        ).ignore();
+      }
+    }
+
+    return deletedMessages;
+  }
+
+  @override
   Future<void> restoreMessage(MailMessage message) async {
     await saveMessages([message]);
     AppLogger.info(
@@ -136,6 +187,25 @@ class MessageRepositoryImpl implements MessageRepository {
         remoteMessageId: message.remoteMessageId,
         accountId: message.accountId,
       ).ignore();
+    }
+  }
+
+  @override
+  Future<void> restoreMessages(List<MailMessage> messages) async {
+    if (messages.isEmpty) return;
+    await saveMessages(messages);
+    AppLogger.info(
+      'Messages Restored',
+      'Restored ${messages.length} emails from Trash',
+      category: LogCategory.triage,
+    );
+    for (final message in messages) {
+      if (message.remoteMessageId.isNotEmpty) {
+        _googleAuth.untrashGmailMessage(
+          remoteMessageId: message.remoteMessageId,
+          accountId: message.accountId,
+        ).ignore();
+      }
     }
   }
 
@@ -161,6 +231,11 @@ class MessageRepositoryImpl implements MessageRepository {
   @override
   Future<Set<String>> getExistingRemoteMessageIds(String accountId) {
     return _db.getExistingRemoteMessageIds(accountId);
+  }
+
+  @override
+  Future<DateTime?> getOldestMessageTimestamp([String? accountId]) {
+    return _db.getOldestMessageTimestamp(accountId);
   }
 
   @override

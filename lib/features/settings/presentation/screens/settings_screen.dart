@@ -296,6 +296,7 @@ class SettingsScreen extends ConsumerWidget {
                           ? 'Successfully cleaned up $removed duplicate email${removed == 1 ? "" : "s"}.'
                           : 'No duplicate emails found. All mailboxes are clean!',
                     ),
+                    duration: const Duration(seconds: 5),
                   ),
                 );
               },

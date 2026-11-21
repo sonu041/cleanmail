@@ -66,8 +66,66 @@ class AppDatabase extends _$AppDatabase {
     return query.watch();
   }
 
+  /// Watches active (non-archived) message counts grouped by account_id.
+  Stream<Map<String, int>> watchMessageCountsByAccount() {
+    final query = customSelect(
+      'SELECT account_id, COUNT(*) AS cnt FROM messages_table WHERE is_archived = 0 GROUP BY account_id',
+      readsFrom: {messagesTable},
+    );
+    return query.watch().map((rows) {
+      final map = <String, int>{};
+      for (final row in rows) {
+        final accId = row.read<String>('account_id');
+        map[accId] = row.read<int>('cnt');
+      }
+      return map;
+    });
+  }
+
+  /// Watches active (non-archived) message counts grouped by category,
+  /// optionally filtered by accountId.
+  Stream<Map<String, int>> watchMessageCountsByCategory({String? accountId}) {
+    final whereClause = StringBuffer('WHERE is_archived = 0');
+    if (accountId != null && accountId.isNotEmpty) {
+      whereClause.write(" AND account_id = '$accountId'");
+    }
+    final query = customSelect(
+      'SELECT category, COUNT(*) AS cnt FROM messages_table $whereClause GROUP BY category',
+      readsFrom: {messagesTable},
+    );
+    return query.watch().map((rows) {
+      final map = <String, int>{};
+      for (final row in rows) {
+        final cat = row.read<String>('category').toLowerCase();
+        map[cat] = row.read<int>('cnt');
+      }
+      return map;
+    });
+  }
+
+  /// Watches the active (non-archived) unread message count.
+  Stream<int> watchUnreadCount({String? accountId, String? category}) {
+    final whereClause = StringBuffer('WHERE is_archived = 0 AND is_read = 0');
+    if (accountId != null && accountId.isNotEmpty) {
+      whereClause.write(" AND account_id = '$accountId'");
+    }
+    if (category != null && category.isNotEmpty && category.toLowerCase() != 'all') {
+      whereClause.write(" AND category = '${category.toLowerCase()}'");
+    }
+    final query = customSelect(
+      'SELECT COUNT(*) AS cnt FROM messages_table $whereClause',
+      readsFrom: {messagesTable},
+    );
+    return query.watchSingle().map((row) => row.read<int>('cnt'));
+  }
+
   Future<MessageEntry?> getMessageById(String id) {
     return (select(messagesTable)..where((m) => m.id.equals(id))).getSingleOrNull();
+  }
+
+  Future<List<MessageEntry>> getMessagesByIds(List<String> ids) {
+    if (ids.isEmpty) return Future.value([]);
+    return (select(messagesTable)..where((m) => m.id.isIn(ids))).get();
   }
 
   Future<void> insertOrUpdateMessages(List<MessagesTableCompanion> entries) async {
@@ -90,6 +148,11 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deleteMessage(String id) async {
     await (delete(messagesTable)..where((m) => m.id.equals(id))).go();
+  }
+
+  Future<int> deleteMessages(List<String> ids) {
+    if (ids.isEmpty) return Future.value(0);
+    return (delete(messagesTable)..where((m) => m.id.isIn(ids))).go();
   }
 
   Future<int> deleteMessageByRemoteId(String remoteId) {
@@ -132,6 +195,21 @@ class AppDatabase extends _$AppDatabase {
         .whereType<String>()
         .where((id) => id.isNotEmpty)
         .toSet();
+  }
+
+  /// Returns the receivedAt timestamp of the oldest stored message (optionally filtered by accountId).
+  Future<DateTime?> getOldestMessageTimestamp([String? accountId]) async {
+    final query = select(messagesTable)
+      ..where((tbl) {
+        if (accountId != null && accountId.isNotEmpty) {
+          return tbl.accountId.equals(accountId);
+        }
+        return const Constant(true);
+      })
+      ..orderBy([(tbl) => OrderingTerm(expression: tbl.receivedAt, mode: OrderingMode.asc)])
+      ..limit(1);
+    final oldest = await query.getSingleOrNull();
+    return oldest?.receivedAt;
   }
 
   /// Removes any duplicate messages across all mailboxes:

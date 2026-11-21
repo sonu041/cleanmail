@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/snackbar_utils.dart';
 import '../../../../domain/models/account.dart';
 import '../../../../domain/models/category.dart';
 import '../../../../domain/models/message.dart';
@@ -19,6 +20,12 @@ class EmailTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Multi-selection state
+    final isSelectionMode = ref.watch(isSelectionModeProvider);
+    final selectedIds = ref.watch(selectedMessageIdsProvider);
+    final isSelected = selectedIds.contains(message.id);
+    final isNerd = AppTheme.isNerd(context);
+
     // Account color indicator
     final accountColor = account != null
         ? Color(account!.avatarColorValue)
@@ -26,7 +33,7 @@ class EmailTile extends ConsumerWidget {
 
     return Dismissible(
       key: Key(message.id),
-      direction: DismissDirection.horizontal,
+      direction: isSelectionMode ? DismissDirection.none : DismissDirection.horizontal,
       background: _buildSwipeAction(
         alignment: Alignment.centerLeft,
         color: AppTheme.archiveColor,
@@ -46,41 +53,56 @@ class EmailTile extends ConsumerWidget {
         if (direction == DismissDirection.startToEnd) {
           // Archive
           await messageRepo.archive(message.id, true);
-          messenger.hideCurrentSnackBar();
-          messenger.showSnackBar(
-            SnackBar(
-              content: Text('Archived "${message.subject}"'),
-              action: SnackBarAction(
-                label: 'Undo',
-                onPressed: () {
-                  messageRepo.archive(message.id, false);
-                },
-              ),
-              duration: const Duration(seconds: 5),
-            ),
+          SnackBarUtils.showAutoHideSnackBar(
+            messenger: messenger,
+            message: 'Archived "${message.subject}"',
+            onUndo: () {
+              messageRepo.archive(message.id, false);
+            },
+            duration: const Duration(seconds: 5),
           );
           return true;
         } else {
           // Delete
           await messageRepo.delete(message.id);
-          messenger.hideCurrentSnackBar();
-          messenger.showSnackBar(
-            SnackBar(
-              content: Text('Deleted "${message.subject}"'),
-              action: SnackBarAction(
-                label: 'Undo',
-                onPressed: () {
-                  messageRepo.restoreMessage(message);
-                },
-              ),
-              duration: const Duration(seconds: 5),
-            ),
+          SnackBarUtils.showAutoHideSnackBar(
+            messenger: messenger,
+            message: 'Deleted "${message.subject}"',
+            onUndo: () {
+              messageRepo.restoreMessage(message);
+            },
+            duration: const Duration(seconds: 5),
           );
           return true;
         }
       },
       child: InkWell(
+        onLongPress: () {
+          final updated = Set<String>.from(selectedIds);
+          if (!isSelectionMode) {
+            ref.read(isSelectionModeProvider.notifier).state = true;
+            updated.add(message.id);
+          } else {
+            if (isSelected) {
+              updated.remove(message.id);
+            } else {
+              updated.add(message.id);
+            }
+          }
+          ref.read(selectedMessageIdsProvider.notifier).state = updated;
+        },
         onTap: () {
+          if (isSelectionMode) {
+            final updated = Set<String>.from(selectedIds);
+            if (isSelected) {
+              updated.remove(message.id);
+            } else {
+              updated.add(message.id);
+            }
+            ref.read(selectedMessageIdsProvider.notifier).state = updated;
+            return;
+          }
+
           // Mark as read
           if (!message.isRead) {
             ref.read(messageRepositoryProvider).markRead(message.id, true);
@@ -97,6 +119,11 @@ class EmailTile extends ConsumerWidget {
         },
         child: Container(
           decoration: BoxDecoration(
+            color: isSelected
+                ? (isNerd
+                    ? AppTheme.nerdPrimary.withOpacity(0.08)
+                    : Theme.of(context).primaryColor.withOpacity(0.08))
+                : Colors.transparent,
             border: Border(
               bottom: BorderSide(
                 color: AppTheme.border(context),
@@ -108,6 +135,22 @@ class EmailTile extends ConsumerWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Selection checkbox indicator in multi-selection mode
+              if (isSelectionMode)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 10),
+                  child: Icon(
+                    isSelected
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    key: ValueKey('email_checkbox_${message.id}'),
+                    size: 20,
+                    color: isSelected
+                        ? (isNerd ? AppTheme.nerdPrimary : Theme.of(context).primaryColor)
+                        : AppTheme.textSecondary(context).withOpacity(0.5),
+                  ),
+                ),
+
               // Account dot indicator
               Container(
                 margin: const EdgeInsets.only(top: 4, right: 12),

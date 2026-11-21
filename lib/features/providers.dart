@@ -94,6 +94,10 @@ final selectedAccountIdProvider = StateProvider<String?>((ref) => null);
 // Selected category filter (default = MailCategory.all)
 final selectedCategoryProvider = StateProvider<MailCategory>((ref) => MailCategory.all);
 
+// Multi-selection state for batch triage operations
+final isSelectionModeProvider = StateProvider<bool>((ref) => false);
+final selectedMessageIdsProvider = StateProvider<Set<String>>((ref) => <String>{});
+
 // Reactive unified inbox messages
 final inboxMessagesStreamProvider = StreamProvider<List<MailMessage>>((ref) {
   final repo = ref.watch(messageRepositoryProvider);
@@ -103,6 +107,33 @@ final inboxMessagesStreamProvider = StreamProvider<List<MailMessage>>((ref) {
   return repo.watchInbox(
     accountId: accountId,
     category: category,
+  );
+});
+
+// Reactive message counts grouped by accountId
+final messageCountsByAccountProvider = StreamProvider<Map<String, int>>((ref) {
+  final repo = ref.watch(messageRepositoryProvider);
+  return repo.watchMessageCountsByAccount();
+});
+
+// Reactive message counts grouped by category for the selected account
+final messageCountsByCategoryProvider = StreamProvider<Map<String, int>>((ref) {
+  final repo = ref.watch(messageRepositoryProvider);
+  final accountId = ref.watch(selectedAccountIdProvider);
+  return repo.watchMessageCountsByCategory(accountId: accountId);
+});
+
+// Selected unread-only filter (default = false)
+final unreadOnlyFilterProvider = StateProvider<bool>((ref) => false);
+
+// Reactive unread count for the current account and category
+final unreadCountProvider = StreamProvider<int>((ref) {
+  final repo = ref.watch(messageRepositoryProvider);
+  final accountId = ref.watch(selectedAccountIdProvider);
+  final category = ref.watch(selectedCategoryProvider);
+  return repo.watchUnreadCount(
+    accountId: accountId,
+    category: category == MailCategory.all ? null : category.name,
   );
 });
 
@@ -121,16 +152,23 @@ final searchQueryProvider = StateProvider<String>((ref) => '');
 final filteredMessagesProvider = Provider<List<MailMessage>>((ref) {
   final messagesAsync = ref.watch(inboxMessagesStreamProvider);
   final query = ref.watch(searchQueryProvider).trim().toLowerCase();
+  final unreadOnly = ref.watch(unreadOnlyFilterProvider);
 
   return messagesAsync.maybeWhen(
     data: (messages) {
-      if (query.isEmpty) return messages;
-      return messages.where((m) {
-        return m.subject.toLowerCase().contains(query) ||
-            m.senderName.toLowerCase().contains(query) ||
-            m.senderEmail.toLowerCase().contains(query) ||
-            m.snippet.toLowerCase().contains(query);
-      }).toList();
+      var result = messages;
+      if (unreadOnly) {
+        result = result.where((m) => !m.isRead).toList();
+      }
+      if (query.isNotEmpty) {
+        result = result.where((m) {
+          return m.subject.toLowerCase().contains(query) ||
+              m.senderName.toLowerCase().contains(query) ||
+              m.senderEmail.toLowerCase().contains(query) ||
+              m.snippet.toLowerCase().contains(query);
+        }).toList();
+      }
+      return result;
     },
     orElse: () => [],
   );

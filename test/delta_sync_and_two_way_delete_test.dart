@@ -4,6 +4,7 @@ import 'package:cleanmail/data/repositories/message_repository_impl.dart';
 import 'package:cleanmail/domain/models/category.dart';
 import 'package:cleanmail/domain/models/message.dart';
 import 'package:drift/native.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class FakeGoogleAuthService extends GoogleAuthService {
@@ -364,5 +365,238 @@ void main() {
     expect(fakeGoogleAuth.batchTrashedRemoteIds, containsAll(['remote_s1', 'remote_s2']));
     // And each was dispatched with its specific accountId
     expect(fakeGoogleAuth.batchTrashedAccountIds, containsAll(['google_account_1', 'google_account_2']));
+  });
+
+  test('getOldestMessageTimestamp returns oldest message receivedAt timestamp', () async {
+    final t1 = DateTime(2026, 11, 15, 10, 0);
+    final t2 = DateTime(2026, 11, 18, 14, 0);
+    final t3 = DateTime(2026, 11, 20, 8, 0);
+
+    // Empty DB returns null
+    final emptyOldest = await messageRepo.getOldestMessageTimestamp();
+    expect(emptyOldest, isNull);
+
+    final msg1 = MailMessage(
+      id: 'acc1_m1',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_1',
+      senderEmail: 'test1@mail.com',
+      senderName: 'Test 1',
+      subject: 'Oldest Msg 1',
+      snippet: 'Snippet 1',
+      plainTextBody: 'Body 1',
+      category: MailCategory.personal,
+      isRead: true,
+      receivedAt: t1,
+    );
+
+    final msg2 = MailMessage(
+      id: 'acc1_m2',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_2',
+      senderEmail: 'test2@mail.com',
+      senderName: 'Test 2',
+      subject: 'Newer Msg 2',
+      snippet: 'Snippet 2',
+      plainTextBody: 'Body 2',
+      category: MailCategory.personal,
+      isRead: false,
+      receivedAt: t2,
+    );
+
+    final msgAcc2 = MailMessage(
+      id: 'acc2_m3',
+      accountId: 'account_2',
+      remoteMessageId: 'rem_3',
+      senderEmail: 'test3@mail.com',
+      senderName: 'Test 3',
+      subject: 'Account 2 Msg 3',
+      snippet: 'Snippet 3',
+      plainTextBody: 'Body 3',
+      category: MailCategory.personal,
+      isRead: false,
+      receivedAt: t3,
+    );
+
+    await messageRepo.saveMessages([msg1, msg2, msgAcc2]);
+
+    // Global oldest
+    final globalOldest = await messageRepo.getOldestMessageTimestamp();
+    expect(globalOldest, equals(t1));
+
+    // Account 1 oldest
+    final acc1Oldest = await messageRepo.getOldestMessageTimestamp('account_1');
+    expect(acc1Oldest, equals(t1));
+
+    // Account 2 oldest
+    final acc2Oldest = await messageRepo.getOldestMessageTimestamp('account_2');
+    expect(acc2Oldest, equals(t3));
+  });
+
+  test('watchMessageCountsByAccount and watchMessageCountsByCategory emit accurate active counts', () async {
+    final msg1 = MailMessage(
+      id: 'cnt_acc1_m1',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_c1',
+      senderEmail: 'test1@mail.com',
+      senderName: 'Test 1',
+      subject: 'Msg 1',
+      snippet: 'Snippet 1',
+      plainTextBody: 'Body 1',
+      category: MailCategory.personal,
+      isRead: true,
+      receivedAt: DateTime.now(),
+    );
+
+    final msg2 = MailMessage(
+      id: 'cnt_acc1_m2',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_c2',
+      senderEmail: 'test2@mail.com',
+      senderName: 'Test 2',
+      subject: 'Msg 2',
+      snippet: 'Snippet 2',
+      plainTextBody: 'Body 2',
+      category: MailCategory.personal,
+      isRead: false,
+      receivedAt: DateTime.now(),
+    );
+
+    final msgAcc2 = MailMessage(
+      id: 'cnt_acc2_m3',
+      accountId: 'account_2',
+      remoteMessageId: 'rem_c3',
+      senderEmail: 'test3@mail.com',
+      senderName: 'Test 3',
+      subject: 'Msg 3',
+      snippet: 'Snippet 3',
+      plainTextBody: 'Body 3',
+      category: MailCategory.personal,
+      isRead: false,
+      receivedAt: DateTime.now(),
+    );
+
+    await messageRepo.saveMessages([msg1, msg2, msgAcc2]);
+
+    final accCounts = await messageRepo.watchMessageCountsByAccount().first;
+    expect(accCounts['account_1'], equals(2));
+    expect(accCounts['account_2'], equals(1));
+
+    final catCounts = await messageRepo.watchMessageCountsByCategory().first;
+    expect(catCounts['personal'], equals(3));
+
+    // When an email is archived, active count decreases
+    await messageRepo.archive('cnt_acc1_m1', true);
+
+    final updatedAccCounts = await messageRepo.watchMessageCountsByAccount().first;
+    expect(updatedAccCounts['account_1'], equals(1));
+    expect(updatedAccCounts['account_2'], equals(1));
+
+    final updatedCatCounts = await messageRepo.watchMessageCountsByCategory().first;
+    expect(updatedCatCounts['personal'], equals(2));
+  });
+
+  test('watchUnreadCount accurately tracks unread emails and updates on read status changes', () async {
+    final unreadMsg1 = MailMessage(
+      id: 'unr_1',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_unr1',
+      senderEmail: 'dev1@cleanmail.com',
+      senderName: 'Dev 1',
+      subject: 'Unread 1',
+      snippet: 'Unread snippet 1',
+      plainTextBody: 'Unread body 1',
+      category: MailCategory.personal,
+      isRead: false,
+      receivedAt: DateTime.now(),
+    );
+
+    final unreadMsg2 = MailMessage(
+      id: 'unr_2',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_unr2',
+      senderEmail: 'dev2@cleanmail.com',
+      senderName: 'Dev 2',
+      subject: 'Unread 2',
+      snippet: 'Unread snippet 2',
+      plainTextBody: 'Unread body 2',
+      category: MailCategory.newsletters,
+      isRead: false,
+      receivedAt: DateTime.now(),
+    );
+
+    final readMsg = MailMessage(
+      id: 'rd_3',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_rd3',
+      senderEmail: 'dev3@cleanmail.com',
+      senderName: 'Dev 3',
+      subject: 'Read 3',
+      snippet: 'Read snippet 3',
+      plainTextBody: 'Read body 3',
+      category: MailCategory.personal,
+      isRead: true,
+      receivedAt: DateTime.now(),
+    );
+
+    await messageRepo.saveMessages([unreadMsg1, unreadMsg2, readMsg]);
+
+    // Overall unread count is 2
+    final totalUnread = await messageRepo.watchUnreadCount().first;
+    expect(totalUnread, equals(2));
+
+    // Category specific unread count
+    final personalUnread = await messageRepo.watchUnreadCount(category: 'personal').first;
+    expect(personalUnread, equals(1));
+    final newsletterUnread = await messageRepo.watchUnreadCount(category: 'newsletters').first;
+    expect(newsletterUnread, equals(1));
+
+    // Marking message as read reactively decrements unread count
+    await messageRepo.markRead('unr_1', true);
+    final updatedUnread = await messageRepo.watchUnreadCount().first;
+    expect(updatedUnread, equals(1));
+  });
+
+  test('Page token storage persists, retrieves, and clears token per account', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    FlutterSecureStorage.setMockInitialValues({});
+    final authService = GoogleAuthService();
+    const testAccount = 'acc_page_token_test';
+
+    await authService.saveStoredPageToken(testAccount, 'token_xyz_123');
+    final retrieved = await authService.getStoredPageToken(testAccount);
+    expect(retrieved, equals('token_xyz_123'));
+
+    await authService.clearStoredPageToken(testAccount);
+    final cleared = await authService.getStoredPageToken(testAccount);
+    expect(cleared, isNull);
+  });
+
+  test('Two-way multiselect batch delete and restore', () async {
+    await messageRepo.saveMessages([testMessage1, testMessage2]);
+
+    final initialCount = (await db.getMessagesByIds([testMessage1.id, testMessage2.id])).length;
+    expect(initialCount, equals(2));
+
+    // Delete multiple selected messages
+    final deleted = await messageRepo.deleteMultiple([testMessage1.id, testMessage2.id]);
+    expect(deleted.length, equals(2));
+
+    // Verify removed from local DB
+    final afterDelete = await db.getMessagesByIds([testMessage1.id, testMessage2.id]);
+    expect(afterDelete, isEmpty);
+
+    // Verify remote trash commands dispatched
+    expect(fakeGoogleAuth.trashedRemoteIds, containsAll(['remote_gmail_101', 'remote_gmail_102']));
+
+    // Restore multiple messages
+    await messageRepo.restoreMessages(deleted);
+
+    // Verify restored in local DB
+    final afterRestore = await db.getMessagesByIds([testMessage1.id, testMessage2.id]);
+    expect(afterRestore.length, equals(2));
+
+    // Verify remote untrash commands dispatched
+    expect(fakeGoogleAuth.untrashedRemoteIds, containsAll(['remote_gmail_101', 'remote_gmail_102']));
   });
 }

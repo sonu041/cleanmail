@@ -220,6 +220,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                                     ? 'Cleaned up $removed duplicate email${removed == 1 ? "" : "s"}.'
                                     : 'No duplicate emails found. All mailboxes are clean!',
                               ),
+                              duration: const Duration(seconds: 5),
                             ),
                           );
                         }

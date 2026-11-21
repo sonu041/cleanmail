@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/snackbar_utils.dart';
 import '../../../../domain/models/account.dart';
 import '../../../../domain/models/message.dart';
 import '../../../providers.dart';
@@ -86,12 +87,15 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             icon: const Icon(Icons.archive_outlined),
             tooltip: 'Archive',
             onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
               await ref.read(messageRepositoryProvider).archive(msg.id, true);
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Message archived')),
-                );
                 Navigator.pop(context);
+                SnackBarUtils.showAutoHideSnackBar(
+                  messenger: messenger,
+                  message: 'Message archived',
+                  duration: const Duration(seconds: 5),
+                );
               }
             },
           ),
@@ -124,13 +128,19 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               ? '${currentAccount.displayName} <$toAddress>'
               : toAddress;
 
-          return Stack(
-            children: [
-              SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+          return SizedBox(
+            width: constraints.maxWidth,
+            height: constraints.maxHeight,
+            child: Stack(
+              fit: StackFit.expand,
+              clipBehavior: Clip.none,
+              children: [
+                SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     // Subject header
                     Text(
                       msg.subject,
@@ -354,7 +364,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         child: _buildMovableDeleteButton(context, msg, constraints, isNerd),
       ),
     ],
-  );
+  ),
+);
 },
 ),
 );
@@ -367,6 +378,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     bool isNerd,
   ) {
     return GestureDetector(
+      key: const ValueKey('reader_floating_delete_btn'),
       onPanStart: (_) {
         _isDragging = false;
       },
@@ -453,18 +465,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     if (!mounted) return;
     Navigator.pop(context);
 
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text('Deleted "${msg.subject}"'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () {
-            repo.restoreMessage(msg);
-          },
-        ),
-        duration: const Duration(seconds: 4),
-      ),
+    SnackBarUtils.showAutoHideSnackBar(
+      messenger: messenger,
+      message: 'Deleted "${msg.subject}"',
+      onUndo: () {
+        repo.restoreMessage(msg);
+      },
+      duration: const Duration(seconds: 5),
     );
   }
 

@@ -69,6 +69,7 @@ class GoogleAuthService {
   // --------------------------------------------------------------------------
 
   String _historyKey(String accountId) => 'gmail_history_$accountId';
+  String _pageTokenKey(String accountId) => 'gmail_page_token_$accountId';
   String _tokenKey(String accountId) => 'gmail_token_$accountId';
   String _tokenTimeKey(String accountId) => 'gmail_token_time_$accountId';
 
@@ -82,6 +83,18 @@ class GoogleAuthService {
 
   Future<void> clearStoredHistoryId(String accountId) async {
     await _storage.delete(key: _historyKey(accountId));
+  }
+
+  Future<String?> getStoredPageToken(String accountId) async {
+    return await _storage.read(key: _pageTokenKey(accountId));
+  }
+
+  Future<void> saveStoredPageToken(String accountId, String pageToken) async {
+    await _storage.write(key: _pageTokenKey(accountId), value: pageToken);
+  }
+
+  Future<void> clearStoredPageToken(String accountId) async {
+    await _storage.delete(key: _pageTokenKey(accountId));
   }
 
   Future<String?> getStoredToken(String accountId) async {
@@ -1007,6 +1020,12 @@ class GoogleAuthService {
     final messageSummaries = listResponse.data['messages'] as List<dynamic>? ?? [];
     debugPrint('Found ${messageSummaries.length} Gmail messages for ${account.email}');
 
+    final nextPageToken = listResponse.data['nextPageToken'] as String?;
+    if (nextPageToken != null && nextPageToken.isNotEmpty) {
+      await saveStoredPageToken(account.id, nextPageToken);
+      debugPrint('Saved initial Gmail nextPageToken for ${account.email}');
+    }
+
     // 2. Fetch existing message IDs to avoid re-fetching or duplicating
     final existingRemoteIds = await messageRepo.getExistingRemoteMessageIds(account.id);
 
@@ -1050,6 +1069,156 @@ class GoogleAuthService {
     }
 
     return fetchedMessages.length;
+  }
+
+  /// Synchronizes the next [count] (default 20) older messages from Gmail.
+  /// Uses the stored [pageToken] if available, otherwise queries `before:<oldest_timestamp_epoch_seconds>`.
+  Future<({int syncedCount, bool hasMore, String? error})> syncOlderGmailMessages({
+    required MailAccount account,
+    required MessageRepository messageRepo,
+    int count = 20,
+  }) async {
+    final headers = await getAuthHeadersForAccount(account.id);
+    if (headers == null) {
+      return (
+        syncedCount: 0,
+        hasMore: false,
+        error: 'Session expired for ${account.email}. Please tap Connect Gmail Account to sign in.',
+      );
+    }
+
+    try {
+      return await _fetchAndSaveOlderGmailMessages(
+        account: account,
+        messageRepo: messageRepo,
+        headers: headers,
+        count: count,
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        debugPrint('401 detected in syncOlderGmailMessages for ${account.email}. Attempting automatic recovery...');
+        await clearStoredToken(account.id);
+        final refreshedHeaders = await getAuthHeadersForAccount(account.id);
+        if (refreshedHeaders != null) {
+          try {
+            return await _fetchAndSaveOlderGmailMessages(
+              account: account,
+              messageRepo: messageRepo,
+              headers: refreshedHeaders,
+              count: count,
+            );
+          } catch (retryErr) {
+            return (syncedCount: 0, hasMore: false, error: _formatErrorMessage(retryErr));
+          }
+        }
+      }
+      return (syncedCount: 0, hasMore: false, error: _formatErrorMessage(e));
+    } catch (e) {
+      return (syncedCount: 0, hasMore: false, error: _formatErrorMessage(e));
+    }
+  }
+
+  Future<({int syncedCount, bool hasMore, String? error})> _fetchAndSaveOlderGmailMessages({
+    required MailAccount account,
+    required MessageRepository messageRepo,
+    required Map<String, String> headers,
+    required int count,
+  }) async {
+    final storedPageToken = await getStoredPageToken(account.id);
+    final queryParams = <String, dynamic>{
+      'maxResults': count,
+      'includeSpamTrash': false,
+    };
+
+    if (storedPageToken != null && storedPageToken.isNotEmpty) {
+      queryParams['pageToken'] = storedPageToken;
+      queryParams['q'] = 'in:inbox';
+    } else {
+      final oldestTimestamp = await messageRepo.getOldestMessageTimestamp(account.id);
+      if (oldestTimestamp != null) {
+        final epochSeconds = (oldestTimestamp.millisecondsSinceEpoch / 1000).floor();
+        queryParams['q'] = 'in:inbox before:$epochSeconds';
+      } else {
+        queryParams['q'] = 'in:inbox';
+      }
+    }
+
+    final listResponse = await _dio.get(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages',
+      queryParameters: queryParams,
+      options: Options(headers: headers),
+    );
+
+    final data = listResponse.data;
+    if (data is! Map<String, dynamic>) {
+      return (syncedCount: 0, hasMore: false, error: 'Invalid response from Gmail');
+    }
+
+    final nextPageToken = data['nextPageToken'] as String?;
+    if (nextPageToken != null && nextPageToken.isNotEmpty) {
+      await saveStoredPageToken(account.id, nextPageToken);
+    } else {
+      await clearStoredPageToken(account.id);
+    }
+
+    final messageSummaries = data['messages'] as List<dynamic>? ?? [];
+    if (messageSummaries.isEmpty) {
+      return (syncedCount: 0, hasMore: false, error: null);
+    }
+
+    final existingRemoteIds = await messageRepo.getExistingRemoteMessageIds(account.id);
+    final List<MailMessage> fetchedMessages = [];
+
+    for (final item in messageSummaries) {
+      final messageId = item['id'] as String?;
+      if (messageId == null || existingRemoteIds.contains(messageId)) {
+        continue;
+      }
+
+      try {
+        final detailResponse = await _dio.get(
+          'https://gmail.googleapis.com/gmail/v1/users/me/messages/$messageId',
+          queryParameters: {'format': 'full'},
+          options: Options(headers: headers),
+        );
+
+        if (detailResponse.data is Map<String, dynamic>) {
+          final detailData = detailResponse.data as Map<String, dynamic>;
+          final labelIds = (detailData['labelIds'] as List<dynamic>? ?? []).map((e) => e.toString()).toSet();
+          final isInbox = labelIds.contains('INBOX');
+          final isSent = labelIds.contains('SENT');
+          if (isSent && !isInbox) {
+            continue;
+          }
+          final parsed = _parseGmailMessageDetail(detailData, account.id);
+          fetchedMessages.add(parsed);
+        }
+      } catch (e) {
+        debugPrint('Error fetching older message detail $messageId: $e');
+      }
+    }
+
+    if (fetchedMessages.isNotEmpty) {
+      await messageRepo.saveMessages(fetchedMessages);
+      await messageRepo.deduplicateMessages();
+    }
+
+    AppLogger.info(
+      'Older Emails Synced',
+      'Fetched ${fetchedMessages.length} older emails for ${account.email}',
+      category: LogCategory.sync,
+      metadata: {
+        'count': fetchedMessages.length,
+        'account': account.email,
+        'hasMore': nextPageToken != null && nextPageToken.isNotEmpty,
+      },
+    );
+
+    return (
+      syncedCount: fetchedMessages.length,
+      hasMore: nextPageToken != null && nextPageToken.isNotEmpty,
+      error: null,
+    );
   }
 
   /// Parses a raw Gmail message API JSON payload into a clean [MailMessage].

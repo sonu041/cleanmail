@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/snackbar_utils.dart';
 import '../../../../domain/models/sender_summary.dart';
 import '../../../providers.dart';
 
@@ -241,8 +242,10 @@ class CleanSweepScreen extends ConsumerWidget {
                         .read(messageRepositoryProvider)
                         .archiveAllFromSender(summary.senderEmail);
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Archived $count emails from ${summary.senderName}')),
+                      SnackBarUtils.showAutoHideSnackBar(
+                        messenger: ScaffoldMessenger.of(context),
+                        message: 'Archived $count emails from ${summary.senderName}',
+                        duration: const Duration(seconds: 5),
                       );
                     }
                   },
@@ -284,8 +287,10 @@ class CleanSweepScreen extends ConsumerWidget {
                           .read(messageRepositoryProvider)
                           .deleteAllFromSender(summary.senderEmail);
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Deleted $count emails from ${summary.senderName}')),
+                        SnackBarUtils.showAutoHideSnackBar(
+                          messenger: ScaffoldMessenger.of(context),
+                          message: 'Deleted $count emails from ${summary.senderName}',
+                          duration: const Duration(seconds: 5),
                         );
                       }
                     }
