@@ -2,7 +2,9 @@
 
 > A fast, distraction-free, text-only email viewer with powerful cleanup workflows and multi-mailbox support, built with Flutter.
 >
-> 📖 **Deep Dive Documentation**: For sequence diagrams, delta sync algorithms, and technical specs, see the **[Synchronization Architecture Guide](docs/SYNC_ARCHITECTURE.md)**.
+> 📖 **User Guide**: For a detailed, user-friendly walkthrough of all features and how to navigate the app, see the **[CleanMail User Guide](features.md)**.
+>
+> 🔧 **Technical Documentation**: For sequence diagrams, delta sync algorithms, and technical specs, see the **[Synchronization Architecture Guide](docs/SYNC_ARCHITECTURE.md)**.
 
 ---
 
@@ -17,21 +19,23 @@
 ### 2. 🧹 Easy-to-Clean Triage Suite & Full Two-Way Sync
 * **Two-Way Read Sync**: Reading an email in CleanMail marks it as read in real Gmail via `POST /modify` (`removeLabelIds: ['UNREAD']`).
 * **Two-Way Delete Sync**: Deleting in CleanMail (swipe gesture, reader trash button, or Sender Sweep) moves the message to Trash in real Gmail via `POST /trash`.
-* **Two-Way Restore (Undo)**: Tapping **Undo** on the deletion snackbar restores the email locally and restores it from Gmail Trash via `POST /untrash`.
-* **Two-Way Archive Sync**: Swiping right or tapping Archive removes the `INBOX` label in real Gmail.
-* **Sender Sweep**: Groups emails by sender volume (e.g. *"TLDR Tech: 42 emails"*), allowing you to **Archive All** or **Delete All** from noisy senders in a single tap with parallelized batch trashing in Gmail.
-* **One-Tap Unsubscribe**: Detects `List-Unsubscribe` headers (HTTP or mailto) and surfaces a prominent 1-click unsubscribe banner with optional cleanup of past emails.
+* **Two-Way Restore (Undo)**: Tapping **Undo** on the 5-second deletion snackbar restores the email locally and restores it from Gmail Trash via `POST /untrash`.
+* **Sender Sweep**: Groups emails by sender volume, allowing you to inspect all messages from a sender or **Delete All** in a single tap with parallelized batch trashing in Gmail.
+* **Email Locking & Protection**: Protect critical messages with a visible lock badge. Locked emails cannot be accidentally swiped to delete and are preserved during bulk triage.
+* **Preferred Tags & Sender Rules**: Configure custom categories and auto-locking for specific senders going forward.
+* **One-Tap Unsubscribe**: Detects `List-Unsubscribe` headers (HTTP or mailto) and surfaces a prominent 1-click unsubscribe banner.
 * **Fast Swipe Triage**: Fluid swipe gestures in the inbox:
-  * **Swipe Right** $\rightarrow$ Archive (green, syncs to Gmail).
   * **Swipe Left** $\rightarrow$ Delete (red, syncs to Gmail Trash).
-  * Includes an instant **Undo** toast notification with remote untrash.
+  * Includes an instant 5-second **Undo** toast notification with remote untrash.
+* **Multi-Select & Batch Actions**: Long-press any email to enter multi-select mode, select multiple emails, and bulk delete or toggle lock status.
 
 ### 3. ⚡ Approach 2: High-Performance Gmail Delta History Sync
 * **Ultra-Fast Delta Synchronization**: Instead of repeatedly re-downloading thousands of messages, CleanMail tracks mailbox checkpoints using Gmail's `users.history.list` API (`GET /gmail/v1/users/me/history?startHistoryId=...`).
+* **Smart Sync with Batching (100 at a time)**: When refreshing, CleanMail checks for latest emails first, and if head is up to date, fetches older un-synced emails in batches of 100.
+* **Mailbox Progress Bars**: Shows exact `X of Y synced (Z%)` and total emails available in the mailbox.
 * **Scale-Free Performance**: Effortlessly syncs mailboxes with 10,000 to 500,000+ emails in **~100ms** using only **2 quota units** per sync.
 * **Bi-Directional Change Detection**:
   * Deletions made in real Gmail (web/mobile) are automatically removed from CleanMail's local database.
-  * Messages archived in Gmail are automatically moved to Archive in CleanMail.
   * Read/unread statuses changed in Gmail are immediately mirrored locally.
   * Only newly arrived messages (`messagesAdded`) are downloaded and sanitized.
 * **Self-Healing Fallback**: If an account has not synced in over 30 days and Google expires the `historyId` (HTTP 404), CleanMail automatically recovers via a windowed resync, establishing a fresh `historyId` checkpoint without user intervention.

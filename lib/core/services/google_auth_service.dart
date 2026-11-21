@@ -178,8 +178,8 @@ class GoogleAuthService {
     return ageMs > 50 * 60 * 1000;
   }
 
-  /// Fetches current mailbox historyId directly from Gmail profile.
-  Future<String?> fetchCurrentHistoryId({
+  /// Fetches current mailbox profile (historyId and messagesTotal) directly from Gmail.
+  Future<({String? historyId, int? messagesTotal})> fetchCurrentProfile({
     required Map<String, String> authHeaders,
   }) async {
     try {
@@ -188,11 +188,20 @@ class GoogleAuthService {
         options: Options(headers: authHeaders),
       );
       final historyId = response.data['historyId']?.toString();
-      return historyId;
+      final messagesTotal = (response.data['messagesTotal'] as num?)?.toInt();
+      return (historyId: historyId, messagesTotal: messagesTotal);
     } catch (e) {
-      debugPrint('Error fetching Gmail profile historyId: $e');
-      return null;
+      debugPrint('Error fetching Gmail profile: $e');
+      return (historyId: null, messagesTotal: null);
     }
+  }
+
+  /// Fetches current mailbox historyId directly from Gmail profile.
+  Future<String?> fetchCurrentHistoryId({
+    required Map<String, String> authHeaders,
+  }) async {
+    final profile = await fetchCurrentProfile(authHeaders: authHeaders);
+    return profile.historyId;
   }
 
   /// Resolves valid OAuth Bearer headers for the specified [accountId] (or the current session).
@@ -617,7 +626,7 @@ class GoogleAuthService {
     ).firstOrNull;
 
     final bool isAlreadyConnected = existingAccount != null;
-    final MailAccount account;
+    MailAccount account;
 
     if (isAlreadyConnected) {
       account = existingAccount.copyWith(
@@ -669,11 +678,15 @@ class GoogleAuthService {
         messageRepo: messageRepo,
       );
 
-      // Approach 2: Fetch and persist current historyId for future delta syncs
-      final profileHistoryId = await fetchCurrentHistoryId(authHeaders: headers);
-      if (profileHistoryId != null) {
-        await saveStoredHistoryId(account.id, profileHistoryId);
-        debugPrint('Initialized Gmail historyId $profileHistoryId for ${account.email}');
+      // Fetch and persist current historyId and total messages in mailbox
+      final profile = await fetchCurrentProfile(authHeaders: headers);
+      if (profile.historyId != null) {
+        await saveStoredHistoryId(account.id, profile.historyId!);
+        debugPrint('Initialized Gmail historyId ${profile.historyId} for ${account.email}');
+      }
+      if (profile.messagesTotal != null && profile.messagesTotal! > 0) {
+        account = account.copyWith(totalMessages: profile.messagesTotal!);
+        await accountRepo.saveAccount(account);
       }
 
       AppLogger.success(
@@ -1071,12 +1084,13 @@ class GoogleAuthService {
     return fetchedMessages.length;
   }
 
-  /// Synchronizes the next [count] (default 20) older messages from Gmail.
+  /// Synchronizes the next [count] (default 20, or 100 for batch sync) older messages from Gmail.
   /// Uses the stored [pageToken] if available, otherwise queries `before:<oldest_timestamp_epoch_seconds>`.
   Future<({int syncedCount, bool hasMore, String? error})> syncOlderGmailMessages({
     required MailAccount account,
     required MessageRepository messageRepo,
     int count = 20,
+    void Function(int current, int total, String status)? onProgress,
   }) async {
     final headers = await getAuthHeadersForAccount(account.id);
     if (headers == null) {
@@ -1093,6 +1107,7 @@ class GoogleAuthService {
         messageRepo: messageRepo,
         headers: headers,
         count: count,
+        onProgress: onProgress,
       );
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
@@ -1106,6 +1121,7 @@ class GoogleAuthService {
               messageRepo: messageRepo,
               headers: refreshedHeaders,
               count: count,
+              onProgress: onProgress,
             );
           } catch (retryErr) {
             return (syncedCount: 0, hasMore: false, error: _formatErrorMessage(retryErr));
@@ -1123,6 +1139,7 @@ class GoogleAuthService {
     required MessageRepository messageRepo,
     required Map<String, String> headers,
     required int count,
+    void Function(int current, int total, String status)? onProgress,
   }) async {
     final storedPageToken = await getStoredPageToken(account.id);
     final queryParams = <String, dynamic>{
@@ -1167,39 +1184,67 @@ class GoogleAuthService {
     }
 
     final existingRemoteIds = await messageRepo.getExistingRemoteMessageIds(account.id);
+    final toFetch = messageSummaries
+        .where((item) {
+          final id = item['id'] as String?;
+          return id != null && !existingRemoteIds.contains(id);
+        })
+        .toList();
+
+    if (toFetch.isEmpty) {
+      return (
+        syncedCount: 0,
+        hasMore: nextPageToken != null && nextPageToken.isNotEmpty,
+        error: null,
+      );
+    }
+
     final List<MailMessage> fetchedMessages = [];
+    const chunkSize = 10;
 
-    for (final item in messageSummaries) {
-      final messageId = item['id'] as String?;
-      if (messageId == null || existingRemoteIds.contains(messageId)) {
-        continue;
-      }
+    for (var i = 0; i < toFetch.length; i += chunkSize) {
+      final end = (i + chunkSize < toFetch.length) ? i + chunkSize : toFetch.length;
+      final chunk = toFetch.sublist(i, end);
 
-      try {
-        final detailResponse = await _dio.get(
-          'https://gmail.googleapis.com/gmail/v1/users/me/messages/$messageId',
-          queryParameters: {'format': 'full'},
-          options: Options(headers: headers),
-        );
+      final chunkResults = await Future.wait(chunk.map((item) async {
+        final messageId = item['id'] as String;
+        try {
+          final detailResponse = await _dio.get(
+            'https://gmail.googleapis.com/gmail/v1/users/me/messages/$messageId',
+            queryParameters: {'format': 'full'},
+            options: Options(headers: headers),
+          );
 
-        if (detailResponse.data is Map<String, dynamic>) {
-          final detailData = detailResponse.data as Map<String, dynamic>;
-          final labelIds = (detailData['labelIds'] as List<dynamic>? ?? []).map((e) => e.toString()).toSet();
-          final isInbox = labelIds.contains('INBOX');
-          final isSent = labelIds.contains('SENT');
-          if (isSent && !isInbox) {
-            continue;
+          if (detailResponse.data is Map<String, dynamic>) {
+            final detailData = detailResponse.data as Map<String, dynamic>;
+            final labelIds = (detailData['labelIds'] as List<dynamic>? ?? []).map((e) => e.toString()).toSet();
+            final isInbox = labelIds.contains('INBOX');
+            final isSent = labelIds.contains('SENT');
+            if (isSent && !isInbox) {
+              return null;
+            }
+            return _parseGmailMessageDetail(detailData, account.id);
           }
-          final parsed = _parseGmailMessageDetail(detailData, account.id);
-          fetchedMessages.add(parsed);
+        } catch (e) {
+          debugPrint('Error fetching older message detail $messageId: $e');
         }
-      } catch (e) {
-        debugPrint('Error fetching older message detail $messageId: $e');
+        return null;
+      }));
+
+      final validMessages = chunkResults.whereType<MailMessage>().toList();
+      if (validMessages.isNotEmpty) {
+        fetchedMessages.addAll(validMessages);
+        await messageRepo.saveMessages(validMessages);
       }
+
+      onProgress?.call(
+        fetchedMessages.length,
+        toFetch.length,
+        'Syncing older emails: ${fetchedMessages.length} of ${toFetch.length}...',
+      );
     }
 
     if (fetchedMessages.isNotEmpty) {
-      await messageRepo.saveMessages(fetchedMessages);
       await messageRepo.deduplicateMessages();
     }
 
@@ -1218,6 +1263,97 @@ class GoogleAuthService {
       syncedCount: fetchedMessages.length,
       hasMore: nextPageToken != null && nextPageToken.isNotEmpty,
       error: null,
+    );
+  }
+
+  /// Performs smart sync for [account]:
+  /// 1. Updates mailbox profile to get total available emails.
+  /// 2. First syncs the latest emails (delta sync).
+  /// 3. If all latest emails are synced, fetches a batch of 100 older un-synced emails.
+  Future<({
+    int syncedCount,
+    int totalAvailable,
+    bool olderSynced,
+    bool hasMoreOlder,
+    String? error,
+  })> syncMailboxSmart({
+    required MailAccount account,
+    required MessageRepository messageRepo,
+    required AccountRepository accountRepo,
+    void Function(int current, int total, String status)? onProgress,
+  }) async {
+    final headers = await getAuthHeadersForAccount(account.id);
+    if (headers == null) {
+      return (
+        syncedCount: 0,
+        totalAvailable: account.totalMessages,
+        olderSynced: false,
+        hasMoreOlder: true,
+        error: 'Session expired for ${account.email}. Please tap Connect Gmail Account to sign in.',
+      );
+    }
+
+    int currentTotalAvailable = account.totalMessages;
+
+    // 1. Fetch current profile from Gmail to update total email count available in mailbox
+    try {
+      final profile = await fetchCurrentProfile(authHeaders: headers);
+      if (profile.messagesTotal != null && profile.messagesTotal! > 0) {
+        currentTotalAvailable = profile.messagesTotal!;
+        await accountRepo.updateTotalMessages(account.id, currentTotalAvailable);
+      }
+    } catch (e) {
+      debugPrint('Note: unable to fetch profile total: $e');
+    }
+
+    onProgress?.call(0, 0, 'Checking for latest emails...');
+
+    // 2. First sync latest emails via delta history sync
+    final deltaResult = await resyncAccount(
+      account: account,
+      messageRepo: messageRepo,
+    );
+
+    if (deltaResult.error != null) {
+      return (
+        syncedCount: 0,
+        totalAvailable: currentTotalAvailable,
+        olderSynced: false,
+        hasMoreOlder: true,
+        error: deltaResult.error,
+      );
+    }
+
+    // If new latest emails were found and synced, update last synced time and finish
+    if (deltaResult.syncedCount > 0) {
+      await accountRepo.updateSyncTime(account.id, DateTime.now());
+      return (
+        syncedCount: deltaResult.syncedCount,
+        totalAvailable: currentTotalAvailable,
+        olderSynced: false,
+        hasMoreOlder: true,
+        error: null,
+      );
+    }
+
+    // 3. All latest emails are already synced! Look for older emails that are not synced in batches of 100
+    onProgress?.call(0, 100, 'Latest emails up to date. Fetching older emails (batch of 100)...');
+
+    final olderResult = await syncOlderGmailMessages(
+      account: account,
+      messageRepo: messageRepo,
+      count: 100,
+      onProgress: onProgress,
+    );
+
+    await accountRepo.updateSyncTime(account.id, DateTime.now());
+
+    return (
+      syncedCount: olderResult.syncedCount,
+      totalAvailable: currentTotalAvailable,
+      olderSynced: true,
+      hasMoreOlder: olderResult.hasMore,
+      error: olderResult.error,
     );
   }
 

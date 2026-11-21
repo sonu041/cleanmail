@@ -297,16 +297,6 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
           },
         ),
 
-        // Multi-Select Emails Toggle
-        IconButton(
-          key: const ValueKey('enter_selection_mode_btn'),
-          icon: const Icon(Icons.checklist_rounded),
-          tooltip: 'Select Emails',
-          onPressed: () {
-            ref.read(isSelectionModeProvider.notifier).state = true;
-          },
-        ),
-
         // Sender Sweep (Easy-to-Clean)
         IconButton(
           icon: const Icon(Icons.cleaning_services_outlined),
@@ -315,18 +305,6 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
             Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const CleanSweepScreen()),
-            );
-          },
-        ),
-
-        // Accounts / Mailboxes
-        IconButton(
-          icon: const Icon(Icons.account_circle_outlined),
-          tooltip: 'Mailbox Accounts',
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AccountsScreen()),
             );
           },
         ),
@@ -429,6 +407,16 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
           },
         ),
 
+        // Lock / Unlock Selected
+        IconButton(
+          key: const ValueKey('lock_toggle_selected_btn'),
+          icon: const Icon(Icons.lock_outline),
+          tooltip: 'Lock / Unlock selected',
+          onPressed: selectedIds.isEmpty
+              ? null
+              : () => _handleToggleLockSelected(context, ref, selectedIds, messages),
+        ),
+
         // Delete Selected
         IconButton(
           key: const ValueKey('delete_selected_btn'),
@@ -447,15 +435,68 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
     );
   }
 
+  Future<void> _handleToggleLockSelected(
+    BuildContext context,
+    WidgetRef ref,
+    Set<String> selectedIds,
+    List<MailMessage> messages,
+  ) async {
+    final selectedMsgs = messages.where((m) => selectedIds.contains(m.id)).toList();
+    if (selectedMsgs.isEmpty) return;
+
+    final anyUnlocked = selectedMsgs.any((m) => !m.isLocked);
+    final targetLocked = anyUnlocked;
+
+    final repo = ref.read(messageRepositoryProvider);
+    for (final msg in selectedMsgs) {
+      await repo.setLocked(msg.id, targetLocked);
+    }
+
+    if (context.mounted) {
+      SnackBarUtils.showAutoHideSnackBar(
+        messenger: ScaffoldMessenger.of(context),
+        message: targetLocked
+            ? 'Locked ${selectedMsgs.length} email(s)'
+            : 'Unlocked ${selectedMsgs.length} email(s)',
+        duration: const Duration(seconds: 3),
+      );
+    }
+  }
+
   Future<void> _handleDeleteSelected(
     BuildContext context,
     WidgetRef ref,
     Set<String> selectedIds,
     List<MailMessage> messages,
   ) async {
-    final count = selectedIds.length;
-    if (count == 0) return;
+    final selectedMsgs = messages.where((m) => selectedIds.contains(m.id)).toList();
+    if (selectedMsgs.isEmpty) return;
+
+    final lockedMsgs = selectedMsgs.where((m) => m.isLocked).toList();
+    final unlockedMsgs = selectedMsgs.where((m) => !m.isLocked).toList();
+
+    if (lockedMsgs.isNotEmpty && unlockedMsgs.isEmpty) {
+      SnackBarUtils.showAutoHideSnackBar(
+        messenger: ScaffoldMessenger.of(context),
+        message: 'Selected email(s) are locked. Unlock them first to delete.',
+        duration: const Duration(seconds: 5),
+      );
+      return;
+    }
+
     final isNerd = AppTheme.isNerd(context);
+    final count = unlockedMsgs.length;
+
+    final String dialogContent;
+    if (lockedMsgs.isNotEmpty) {
+      dialogContent = isNerd
+          ? 'Notice: ${lockedMsgs.length} locked item(s) are protected and will NOT be deleted.\nMove $count unlocked item(s) to trash?'
+          : 'Note: ${lockedMsgs.length} locked email${lockedMsgs.length > 1 ? 's are' : ' is'} protected and will not be deleted.\n\nAre you sure you want to delete the remaining $count unlocked email${count > 1 ? 's' : ''}?';
+    } else {
+      dialogContent = isNerd
+          ? 'Move $count selected items to trash?'
+          : 'Are you sure you want to delete $count selected email${count > 1 ? 's' : ''}?';
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -465,9 +506,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
           style: TextStyle(fontFamily: AppTheme.fontFamily(context)),
         ),
         content: Text(
-          isNerd
-              ? 'Move $count selected items to trash?'
-              : 'Are you sure you want to delete $count selected email${count > 1 ? 's' : ''}?',
+          dialogContent,
           style: TextStyle(fontFamily: AppTheme.fontFamily(context)),
         ),
         actions: [
@@ -488,16 +527,20 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
       final repo = ref.read(messageRepositoryProvider);
       final messenger = ScaffoldMessenger.of(context);
 
-      final deletedMessages = await repo.deleteMultiple(selectedIds.toList());
+      final deletedMessages = await repo.deleteMultiple(unlockedMsgs.map((m) => m.id).toList());
 
       // Exit selection mode
       ref.read(isSelectionModeProvider.notifier).state = false;
       ref.read(selectedMessageIdsProvider.notifier).state = <String>{};
 
       if (context.mounted) {
+        final String messageText = lockedMsgs.isNotEmpty
+            ? 'Deleted ${deletedMessages.length} email${deletedMessages.length > 1 ? 's' : ''} (${lockedMsgs.length} locked kept)'
+            : 'Deleted ${deletedMessages.length} email${deletedMessages.length > 1 ? 's' : ''}';
+
         SnackBarUtils.showAutoHideSnackBar(
           messenger: messenger,
-          message: 'Deleted $count email${count > 1 ? 's' : ''}',
+          message: messageText,
           onUndo: () {
             repo.restoreMessages(deletedMessages);
           },

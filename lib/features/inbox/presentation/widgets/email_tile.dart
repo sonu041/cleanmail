@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/snackbar_utils.dart';
@@ -7,6 +8,7 @@ import '../../../../domain/models/category.dart';
 import '../../../../domain/models/message.dart';
 import '../../../providers.dart';
 import '../../../reader/presentation/screens/reader_screen.dart';
+import 'set_preferred_tag_dialog.dart';
 
 class EmailTile extends ConsumerWidget {
   final MailMessage message;
@@ -33,12 +35,12 @@ class EmailTile extends ConsumerWidget {
 
     return Dismissible(
       key: Key(message.id),
-      direction: isSelectionMode ? DismissDirection.none : DismissDirection.horizontal,
+      direction: isSelectionMode ? DismissDirection.none : DismissDirection.endToStart,
       background: _buildSwipeAction(
-        alignment: Alignment.centerLeft,
-        color: AppTheme.archiveColor,
-        icon: Icons.archive_outlined,
-        label: 'Archive',
+        alignment: Alignment.centerRight,
+        color: AppTheme.deleteColor,
+        icon: Icons.delete_outline,
+        label: 'Delete',
       ),
       secondaryBackground: _buildSwipeAction(
         alignment: Alignment.centerRight,
@@ -50,34 +52,30 @@ class EmailTile extends ConsumerWidget {
         final messageRepo = ref.read(messageRepositoryProvider);
         final messenger = ScaffoldMessenger.of(context);
 
-        if (direction == DismissDirection.startToEnd) {
-          // Archive
-          await messageRepo.archive(message.id, true);
+        // Delete
+        if (message.isLocked) {
           SnackBarUtils.showAutoHideSnackBar(
             messenger: messenger,
-            message: 'Archived "${message.subject}"',
-            onUndo: () {
-              messageRepo.archive(message.id, false);
-            },
+            message: 'This email is locked. Unlock it first to delete.',
             duration: const Duration(seconds: 5),
           );
-          return true;
-        } else {
-          // Delete
-          await messageRepo.delete(message.id);
-          SnackBarUtils.showAutoHideSnackBar(
-            messenger: messenger,
-            message: 'Deleted "${message.subject}"',
-            onUndo: () {
-              messageRepo.restoreMessage(message);
-            },
-            duration: const Duration(seconds: 5),
-          );
-          return true;
+          return false;
         }
+
+        await messageRepo.delete(message.id);
+        SnackBarUtils.showAutoHideSnackBar(
+          messenger: messenger,
+          message: 'Deleted "${message.subject}"',
+          onUndo: () {
+            messageRepo.restoreMessage(message);
+          },
+          duration: const Duration(seconds: 5),
+        );
+        return true;
       },
       child: InkWell(
         onLongPress: () {
+          HapticFeedback.mediumImpact();
           final updated = Set<String>.from(selectedIds);
           if (!isSelectionMode) {
             ref.read(isSelectionModeProvider.notifier).state = true;
@@ -206,13 +204,27 @@ class EmailTile extends ConsumerWidget {
                             ],
                           ),
                         ),
-                        Text(
-                          _formatDate(message.receivedAt),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textSecondary(context),
-                            fontFamily: AppTheme.fontFamily(context),
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (message.isLocked) ...[
+                              Icon(
+                                Icons.lock,
+                                key: ValueKey('email_lock_icon_${message.id}'),
+                                size: 12,
+                                color: isNerd ? AppTheme.nerdAccentRed : Colors.amber.shade800,
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(
+                              _formatDate(message.receivedAt),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textSecondary(context),
+                                fontFamily: AppTheme.fontFamily(context),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -248,10 +260,18 @@ class EmailTile extends ConsumerWidget {
                     ),
                     const SizedBox(height: 6),
 
-                    // Badges (Category & 1-Tap Unsubscribe indicator)
+                    // Badges (Locked tag, Category, Custom Tag & 1-Tap Unsubscribe indicator)
                     Row(
                       children: [
-                        _buildCategoryChip(context, message.category),
+                        if (message.isLocked) ...[
+                          _buildLockedBadge(context, ref),
+                          const SizedBox(width: 8),
+                        ],
+                        _buildCategoryChip(context, ref, message.category),
+                        if (message.customTag != null && message.customTag!.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          _buildCustomTagBadge(context, ref, message.customTag!),
+                        ],
                         if (message.hasUnsubscribeOption) ...[
                           const SizedBox(width: 8),
                           _buildUnsubscribeIndicator(context),
@@ -296,7 +316,63 @@ class EmailTile extends ConsumerWidget {
     );
   }
 
-  Widget _buildCategoryChip(BuildContext context, MailCategory category) {
+  Widget _buildLockedBadge(BuildContext context, WidgetRef ref) {
+    final isNerd = AppTheme.isNerd(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final Color bg = isNerd
+        ? const Color(0xFF261000)
+        : (isDark ? const Color(0xFF3E2C00) : const Color(0xFFFFF8E1));
+    final Color border = isNerd
+        ? AppTheme.nerdAccentRed
+        : (isDark ? Colors.amber.shade700 : Colors.amber.shade800);
+    final Color fg = isNerd
+        ? AppTheme.nerdAccentRed
+        : (isDark ? Colors.amber.shade300 : Colors.amber.shade900);
+
+    return InkWell(
+      key: ValueKey('email_locked_tag_${message.id}'),
+      onTap: () async {
+        final repo = ref.read(messageRepositoryProvider);
+        await repo.setLocked(message.id, false);
+        if (context.mounted) {
+          SnackBarUtils.showAutoHideSnackBar(
+            messenger: ScaffoldMessenger.of(context),
+            message: 'Email unlocked',
+            duration: const Duration(seconds: 3),
+          );
+        }
+      },
+      borderRadius: BorderRadius.circular(isNerd ? 3 : 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(isNerd ? 3 : 6),
+          border: Border.all(color: border, width: 0.8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock, size: 10, color: fg),
+            const SizedBox(width: 3),
+            Text(
+              isNerd ? '[LOCKED]' : 'LOCKED',
+              style: TextStyle(
+                color: fg,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryChip(BuildContext context, WidgetRef ref, MailCategory category) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -304,20 +380,34 @@ class EmailTile extends ConsumerWidget {
     Color fg;
 
     if (AppTheme.isNerd(context)) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-        decoration: BoxDecoration(
-          color: const Color(0xFF00220B),
-          borderRadius: BorderRadius.circular(3),
-          border: Border.all(color: const Color(0xFF005522), width: 0.8),
-        ),
-        child: Text(
-          '[${category.name.toUpperCase()}]',
-          style: const TextStyle(
-            color: AppTheme.nerdPrimary,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            fontFamily: AppTheme.nerdFontFamily,
+      return InkWell(
+        key: ValueKey('email_category_chip_${message.id}'),
+        onTap: () {
+          showSetPreferredTagDialog(
+            context: context,
+            ref: ref,
+            senderEmail: message.senderEmail,
+            senderName: message.senderName,
+            currentCategory: message.category,
+            currentCustomTag: message.customTag,
+          );
+        },
+        borderRadius: BorderRadius.circular(3),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+          decoration: BoxDecoration(
+            color: const Color(0xFF00220B),
+            borderRadius: BorderRadius.circular(3),
+            border: Border.all(color: const Color(0xFF005522), width: 0.8),
+          ),
+          child: Text(
+            '[${category.name.toUpperCase()}]',
+            style: const TextStyle(
+              color: AppTheme.nerdPrimary,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              fontFamily: AppTheme.nerdFontFamily,
+            ),
           ),
         ),
       );
@@ -343,18 +433,94 @@ class EmailTile extends ConsumerWidget {
         break;
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(6),
+    return InkWell(
+      key: ValueKey('email_category_chip_${message.id}'),
+      onTap: () {
+        showSetPreferredTagDialog(
+          context: context,
+          ref: ref,
+          senderEmail: message.senderEmail,
+          senderName: message.senderName,
+          currentCategory: message.category,
+          currentCustomTag: message.customTag,
+        );
+      },
+      borderRadius: BorderRadius.circular(6),
+      child: Tooltip(
+        message: 'Tap to set preferred tag for ${message.senderEmail}',
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                category.label,
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(Icons.arrow_drop_down, size: 14, color: fg),
+            ],
+          ),
+        ),
       ),
-      child: Text(
-        category.label,
-        style: TextStyle(
-          color: fg,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
+    );
+  }
+
+  Widget _buildCustomTagBadge(BuildContext context, WidgetRef ref, String tag) {
+    final isNerd = AppTheme.isNerd(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final Color bg = isNerd
+        ? const Color(0xFF001F3F)
+        : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9));
+    final Color fg = isNerd
+        ? AppTheme.nerdAccentCyan
+        : (isDark ? Colors.cyan.shade300 : const Color(0xFF0284C7));
+
+    return InkWell(
+      key: ValueKey('email_custom_tag_${message.id}'),
+      onTap: () {
+        showSetPreferredTagDialog(
+          context: context,
+          ref: ref,
+          senderEmail: message.senderEmail,
+          senderName: message.senderName,
+          currentCategory: message.category,
+          currentCustomTag: message.customTag,
+        );
+      },
+      borderRadius: BorderRadius.circular(isNerd ? 3 : 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(isNerd ? 3 : 6),
+          border: Border.all(color: fg.withOpacity(0.5), width: 0.8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.label_outline, size: 10, color: fg),
+            const SizedBox(width: 3),
+            Text(
+              isNerd ? '[${tag.toUpperCase()}]' : tag,
+              style: TextStyle(
+                color: fg,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+              ),
+            ),
+          ],
         ),
       ),
     );

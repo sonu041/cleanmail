@@ -12,6 +12,9 @@ import 'package:cleanmail/data/repositories/message_repository_impl.dart';
 import 'package:cleanmail/domain/models/account.dart';
 import 'package:cleanmail/domain/models/category.dart';
 import 'package:cleanmail/domain/models/message.dart';
+import 'package:cleanmail/features/clean_sweep/presentation/screens/clean_sweep_screen.dart';
+import 'package:cleanmail/features/clean_sweep/presentation/screens/sender_emails_screen.dart';
+import 'package:cleanmail/features/accounts/presentation/screens/accounts_screen.dart';
 import 'package:cleanmail/features/inbox/presentation/screens/inbox_screen.dart';
 import 'package:cleanmail/features/inbox/presentation/widgets/email_tile.dart';
 import 'package:cleanmail/features/providers.dart';
@@ -639,20 +642,18 @@ void main() {
     expect(find.text('First Topic'), findsOneWidget);
     expect(find.text('Second Topic'), findsOneWidget);
 
-    // Enter selection mode via toolbar button
-    expect(find.byKey(const ValueKey('enter_selection_mode_btn')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('enter_selection_mode_btn')));
+    // Verify top AppBar no longer has select icon or mailbox profile icon
+    expect(find.byKey(const ValueKey('enter_selection_mode_btn')), findsNothing);
+    expect(find.byTooltip('Mailbox Accounts'), findsNothing);
+
+    // Enter selection mode via long press on an email
+    await tester.longPress(find.text('First Topic'));
     await tester.pumpAndSettle();
 
-    // Verify selection AppBar is shown with 0 selected
-    expect(find.text('0 selected'), findsOneWidget);
+    // Verify selection AppBar is shown with 1 selected and checkboxes are shown
+    expect(find.text('1 selected'), findsOneWidget);
     expect(find.byKey(const ValueKey('email_checkbox_msg_multi_1')), findsOneWidget);
     expect(find.byKey(const ValueKey('email_checkbox_msg_multi_2')), findsOneWidget);
-
-    // Tap first email to select it
-    await tester.tap(find.text('First Topic'));
-    await tester.pumpAndSettle();
-    expect(find.text('1 selected'), findsOneWidget);
 
     // Tap second email to select it
     await tester.tap(find.text('Second Topic'));
@@ -690,6 +691,615 @@ void main() {
     // Flush any pending log debounce timers
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
+
+    await testDb.close();
+  });
+
+  testWidgets('CleanSweepScreen loads sender summaries successfully without SQL type error',
+      (WidgetTester tester) async {
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+
+    await testAccountRepo.saveAccount(
+      const MailAccount(
+        id: 'acc1',
+        email: 'user@example.com',
+        displayName: 'User',
+        provider: MailProvider.gmail,
+        avatarColorValue: 0xFF2563EB,
+      ),
+    );
+
+    final msg1 = MailMessage(
+      id: 'sweep_test_1',
+      accountId: 'acc1',
+      remoteMessageId: 'remote_sw1',
+      senderEmail: 'promo@store.com',
+      senderName: 'Promo Store',
+      subject: '50% Off Everything',
+      snippet: 'Special discount',
+      plainTextBody: 'Body discount',
+      category: MailCategory.updates,
+      isRead: false,
+      receivedAt: DateTime.now(),
+    );
+
+    await testMessageRepo.saveMessages([msg1]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(testDb),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
+        ],
+        child: const MaterialApp(
+          home: CleanSweepScreen(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Verify Sender Sweep screen loaded successfully
+    expect(find.text('Sender Sweep'), findsOneWidget);
+    expect(find.text('Top Senders by Volume'), findsOneWidget);
+    expect(find.text('Promo Store'), findsOneWidget);
+    expect(find.text('promo@store.com'), findsOneWidget);
+    expect(find.text('1 emails'), findsOneWidget);
+    expect(find.text('Latest: "50% Off Everything"'), findsOneWidget);
+    expect(find.text('Archive All'), findsNothing);
+    expect(find.text('Delete All'), findsOneWidget);
+
+    // Verify no error message is displayed
+    expect(find.textContaining('Error loading senders'), findsNothing);
+
+    // Verify "View Emails" button is NOT shown
+    expect(find.text('View Emails'), findsNothing);
+
+    // Tap sender title to open SenderEmailsScreen
+    final senderTitle = find.byKey(const ValueKey('sender_title_promo@store.com'));
+    expect(senderTitle, findsOneWidget);
+    await tester.tap(senderTitle);
+    await tester.pumpAndSettle();
+
+    // Verify SenderEmailsScreen is open and shows the email list
+    expect(find.byType(SenderEmailsScreen), findsOneWidget);
+    expect(find.text('50% Off Everything'), findsOneWidget);
+    expect(find.text('1 email • 1 unread'), findsOneWidget);
+
+    // Tap back button to return to Sender Sweep
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    // Tap sender card directly to verify card tap also opens SenderEmailsScreen
+    final senderCard = find.byKey(const ValueKey('sender_card_promo@store.com'));
+    expect(senderCard, findsOneWidget);
+    await tester.tap(senderCard);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SenderEmailsScreen), findsOneWidget);
+    expect(find.text('50% Off Everything'), findsOneWidget);
+
+    await testDb.close();
+  });
+
+  testWidgets('EmailTile visibly displays locked badge and blocks swipe-to-delete when locked',
+      (WidgetTester tester) async {
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
+
+    final lockedMsg = MailMessage(
+      id: 'tile_locked_1',
+      accountId: 'acc1',
+      remoteMessageId: 'remote_tl1',
+      senderEmail: 'tax@gov.org',
+      senderName: 'Tax Authority',
+      subject: 'Annual Tax Assessment',
+      snippet: 'Official confidential document',
+      plainTextBody: 'Tax document details',
+      category: MailCategory.personal,
+      isRead: true,
+      receivedAt: DateTime.now(),
+      isLocked: true,
+    );
+
+    await testMessageRepo.saveMessages([lockedMsg]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(testDb),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: EmailTile(message: lockedMsg),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Verify [LOCKED] badge and lock icon are visible
+    expect(find.byKey(const ValueKey('email_locked_tag_tile_locked_1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('email_lock_icon_tile_locked_1')), findsOneWidget);
+    expect(find.text('LOCKED'), findsOneWidget);
+
+    // Swipe left (from right to left) to trigger Delete
+    await tester.drag(find.byType(Dismissible), const Offset(-500.0, 0.0));
+    await tester.pumpAndSettle();
+
+    // Verify warning SnackBar is displayed: deletion blocked!
+    expect(find.text('This email is locked. Unlock it first to delete.'), findsOneWidget);
+
+    // Verify EmailTile is still in the tree (dismissal rejected)
+    expect(find.text('Annual Tax Assessment'), findsOneWidget);
+
+    // Tap the locked badge to unlock
+    await tester.tap(find.byKey(const ValueKey('email_locked_tag_tile_locked_1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Email unlocked'), findsOneWidget);
+
+    // Verify in database that it was unlocked
+    final inDb = await testMessageRepo.getMessage('tile_locked_1');
+    expect(inDb!.isLocked, isFalse);
+
+    // Let SnackBar auto-hide timers expire cleanly
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+
+    await testDb.close();
+  });
+
+  testWidgets('ReaderScreen displays locked tag banner, toggles lock via AppBar, and blocks deletion',
+      (WidgetTester tester) async {
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+
+    await testAccountRepo.saveAccount(
+      const MailAccount(
+        id: 'acc1',
+        email: 'user@example.com',
+        displayName: 'User',
+        provider: MailProvider.gmail,
+        avatarColorValue: 0xFF2563EB,
+      ),
+    );
+
+    final lockedMsg = MailMessage(
+      id: 'reader_lock_msg_1',
+      accountId: 'acc1',
+      remoteMessageId: 'remote_rl1',
+      senderEmail: 'crypto@wallet.com',
+      senderName: 'Wallet Service',
+      subject: 'Recovery Phrase Backup',
+      snippet: 'Secret seed phrase',
+      plainTextBody: 'Do not share this phrase with anyone.',
+      category: MailCategory.personal,
+      isRead: true,
+      receivedAt: DateTime.now(),
+      isLocked: true,
+    );
+
+    await testMessageRepo.saveMessages([lockedMsg]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(testDb),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
+        ],
+        child: MaterialApp(
+          home: Builder(
+            builder: (ctx) => Scaffold(
+              body: ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    ctx,
+                    MaterialPageRoute(
+                      builder: (_) => const ReaderScreen(messageId: 'reader_lock_msg_1'),
+                    ),
+                  );
+                },
+                child: const Text('Open Reader'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open Reader'));
+    await tester.pumpAndSettle();
+
+    // Verify ReaderScreen is open
+    expect(find.text('Recovery Phrase Backup'), findsOneWidget);
+
+    // Verify LOCKED banner tag is visible
+    expect(find.byKey(const ValueKey('reader_locked_tag')), findsOneWidget);
+    expect(find.text('LOCKED • Deletion Protected'), findsOneWidget);
+
+    // Verify AppBar lock button is present
+    expect(find.byKey(const ValueKey('reader_lock_btn')), findsOneWidget);
+
+    // Attempt to delete via floating delete button
+    final deleteBtn = find.byKey(const ValueKey('reader_floating_delete_btn'));
+    expect(deleteBtn, findsOneWidget);
+    await tester.tap(deleteBtn);
+    await tester.pumpAndSettle();
+
+    // Verify delete is blocked and warning SnackBar shown
+    expect(find.text('This email is locked. Unlock it first to delete.'), findsOneWidget);
+    // ReaderScreen still open
+    expect(find.text('Recovery Phrase Backup'), findsOneWidget);
+
+    // Tap AppBar lock button to unlock
+    await tester.tap(find.byKey(const ValueKey('reader_lock_btn')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Email unlocked'), findsOneWidget);
+    // LOCKED tag banner is no longer visible
+    expect(find.byKey(const ValueKey('reader_locked_tag')), findsNothing);
+
+    // Advance time past the 500ms debounce of delete button
+    await tester.pump(const Duration(milliseconds: 600));
+
+    // Tap floating delete button now that it is unlocked
+    await tester.tap(deleteBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    // Successfully deleted and returned to previous screen
+    expect(find.text('Deleted "Recovery Phrase Backup"'), findsOneWidget);
+    expect(find.text('Open Reader'), findsOneWidget);
+
+    // Let SnackBar auto-hide timers expire cleanly
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+
+    await testDb.close();
+  });
+
+  testWidgets('EmailTile category chip tap opens SetPreferredTagDialog and setting preferred tag updates email and applies going forward',
+      (WidgetTester tester) async {
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
+
+    final msg1 = MailMessage(
+      id: 'pref_tag_msg_1',
+      accountId: 'acc1',
+      remoteMessageId: 'remote_pt1',
+      senderEmail: 'partner@company.com',
+      senderName: 'Business Partner',
+      subject: 'Quarterly Review',
+      snippet: 'Review details',
+      plainTextBody: 'Body text',
+      category: MailCategory.newsletters, // Initially newsletters
+      isRead: true,
+      receivedAt: DateTime.now(),
+      isLocked: false,
+    );
+
+    await testMessageRepo.saveMessages([msg1]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(testDb),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: EmailTile(message: msg1),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Verify initial chip text
+    expect(find.byKey(const ValueKey('email_category_chip_pref_tag_msg_1')), findsOneWidget);
+    expect(find.text('Newsletters'), findsOneWidget);
+
+    // Tap category chip to open SetPreferredTagDialog
+    await tester.tap(find.byKey(const ValueKey('email_category_chip_pref_tag_msg_1')));
+    await tester.pumpAndSettle();
+
+    // Verify SetPreferredTagDialog is open
+    expect(find.text('Set Preferred Tag'), findsOneWidget);
+    expect(find.text('partner@company.com'), findsOneWidget);
+
+    // Select Personal category
+    final personalChip = find.byKey(const ValueKey('pref_cat_chip_personal'));
+    expect(personalChip, findsOneWidget);
+    await tester.tap(personalChip);
+    await tester.pumpAndSettle();
+
+    // Enter custom tag label
+    final customTagInput = find.byKey(const ValueKey('pref_custom_tag_input'));
+    expect(customTagInput, findsOneWidget);
+    await tester.enterText(customTagInput, 'Direct');
+    await tester.pumpAndSettle();
+
+    // Toggle auto-lock
+    final autoLockToggle = find.byKey(const ValueKey('pref_auto_lock_toggle'));
+    expect(autoLockToggle, findsOneWidget);
+    await tester.tap(autoLockToggle);
+    await tester.pumpAndSettle();
+
+    // Tap Save Preferred Tag
+    final saveBtn = find.byKey(const ValueKey('pref_save_rule_btn'));
+    expect(saveBtn, findsOneWidget);
+    await tester.tap(saveBtn);
+    await tester.pumpAndSettle();
+
+    // Verify confirmation SnackBar
+    expect(find.text('Preferred tag [Personal / Direct] set for partner@company.com'), findsOneWidget);
+
+    // Verify in database that existing email was updated
+    final updatedExisting = await testMessageRepo.getMessage('pref_tag_msg_1');
+    expect(updatedExisting!.category, equals(MailCategory.personal));
+    expect(updatedExisting.customTag, equals('Direct'));
+    expect(updatedExisting.isLocked, isTrue);
+
+    // Verify that going forward, any new email from partner@company.com receives the preferred tag
+    final futureMsg = MailMessage(
+      id: 'pref_tag_msg_2',
+      accountId: 'acc1',
+      remoteMessageId: 'remote_pt2',
+      senderEmail: 'partner@company.com',
+      senderName: 'Business Partner',
+      subject: 'New Project Proposal',
+      snippet: 'Proposal snippet',
+      plainTextBody: 'Proposal body',
+      category: MailCategory.newsletters, // incoming raw category
+      isRead: false,
+      receivedAt: DateTime.now(),
+      isLocked: false,
+    );
+    await testMessageRepo.saveMessages([futureMsg]);
+
+    final updatedFuture = await testMessageRepo.getMessage('pref_tag_msg_2');
+    expect(updatedFuture!.category, equals(MailCategory.personal));
+    expect(updatedFuture.customTag, equals('Direct'));
+    expect(updatedFuture.isLocked, isTrue);
+
+    // Let SnackBar auto-hide timers expire cleanly
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+
+    await testDb.close();
+  });
+
+  testWidgets('CleanSweepScreen action buttons wrap properly without overflow on narrow screens',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+
+    final msg = MailMessage(
+      id: 'narrow_sweep_1',
+      accountId: 'acc1',
+      remoteMessageId: 'remote_ns1',
+      senderEmail: 'promo@store.com',
+      senderName: 'Promo Store',
+      subject: 'Deal',
+      snippet: 'Deal snippet',
+      plainTextBody: 'Body',
+      category: MailCategory.updates,
+      isRead: false,
+      receivedAt: DateTime.now(),
+    );
+    await testMessageRepo.saveMessages([msg]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(testDb),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
+        ],
+        child: const MaterialApp(
+          home: CleanSweepScreen(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Verify action buttons are present and no layout overflow exception is thrown
+    expect(find.byKey(const ValueKey('pref_tag_btn_promo@store.com')), findsOneWidget);
+    expect(find.text('View Emails'), findsNothing);
+    expect(find.text('Archive All'), findsNothing);
+    expect(find.text('Delete All'), findsOneWidget);
+
+    await testDb.close();
+  });
+
+  testWidgets('AccountsScreen displays sync progress bar, X of Y synced, and total available in mailbox',
+      (WidgetTester tester) async {
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+    final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
+
+    // 1. Create a connected mailbox with 100 total messages available in Gmail
+    final account = MailAccount(
+      id: 'acc_progress_1',
+      email: 'alex.chen@gmail.com',
+      displayName: 'Alex Gmail',
+      provider: MailProvider.gmail,
+      avatarColorValue: 0xFF1E88E5,
+      lastSyncedAt: DateTime.now(),
+      totalMessages: 100,
+    );
+    await testAccountRepo.saveAccount(account);
+
+    // 2. Insert 25 synced messages in local DB for this account
+    final messages = List.generate(
+      25,
+      (i) => MailMessage(
+        id: 'msg_prog_$i',
+        accountId: 'acc_progress_1',
+        remoteMessageId: 'remote_prog_$i',
+        senderEmail: 'sender$i@test.com',
+        senderName: 'Sender $i',
+        subject: 'Subject $i',
+        snippet: 'Snippet $i',
+        plainTextBody: 'Body $i',
+        category: MailCategory.personal,
+        isRead: true,
+        receivedAt: DateTime.now().subtract(Duration(minutes: i)),
+      ),
+    );
+    await testMessageRepo.saveMessages(messages);
+
+    // 3. Pump AccountsScreen
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(testDb),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+        ],
+        child: const MaterialApp(
+          home: AccountsScreen(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Verify mailbox details are displayed
+    expect(find.text('Alex Gmail'), findsOneWidget);
+    expect(find.text('alex.chen@gmail.com'), findsOneWidget);
+
+    // Verify progress text "25 of 100 synced (25%)"
+    expect(find.byKey(const ValueKey('sync_text_acc_progress_1')), findsOneWidget);
+    expect(find.text('25 of 100 synced (25%)'), findsOneWidget);
+
+    // Verify total available in mailbox "Total in mailbox: 100"
+    expect(find.byKey(const ValueKey('total_text_acc_progress_1')), findsOneWidget);
+    expect(find.text('Total in mailbox: 100'), findsOneWidget);
+
+    // Verify linear progress bar is present with 0.25 value
+    final progressBarFinder = find.byKey(const ValueKey('sync_progress_bar_acc_progress_1'));
+    expect(progressBarFinder, findsOneWidget);
+    final LinearProgressIndicator progressBar = tester.widget(progressBarFinder);
+    expect(progressBar.value, equals(0.25));
+
+    // Verify refresh / sync button is present
+    expect(find.byKey(const ValueKey('sync_account_btn_acc_progress_1')), findsOneWidget);
+
+    await testDb.close();
+  });
+
+  testWidgets('ReaderScreen displays button to show all emails from sender and opens SenderEmailsScreen on tap',
+      (WidgetTester tester) async {
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+    final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
+
+    const account = MailAccount(
+      id: 'acc1',
+      email: 'user@example.com',
+      displayName: 'User',
+      provider: MailProvider.gmail,
+      avatarColorValue: 0xFF2563EB,
+    );
+    await testAccountRepo.saveAccount(account);
+
+    final msg1 = MailMessage(
+      id: 'msg_reader_1',
+      accountId: 'acc1',
+      remoteMessageId: 'remote_r1',
+      senderEmail: 'newsletter@techdaily.com',
+      senderName: 'Tech Daily',
+      subject: 'Tech Digest #1',
+      snippet: 'Top stories',
+      plainTextBody: 'Full content of story 1',
+      category: MailCategory.newsletters,
+      isRead: true,
+      receivedAt: DateTime.now().subtract(const Duration(hours: 2)),
+    );
+
+    final msg2 = MailMessage(
+      id: 'msg_reader_2',
+      accountId: 'acc1',
+      remoteMessageId: 'remote_r2',
+      senderEmail: 'newsletter@techdaily.com',
+      senderName: 'Tech Daily',
+      subject: 'Tech Digest #2',
+      snippet: 'Earlier stories',
+      plainTextBody: 'Full content of story 2',
+      category: MailCategory.newsletters,
+      isRead: true,
+      receivedAt: DateTime.now().subtract(const Duration(days: 1)),
+    );
+
+    await testMessageRepo.saveMessages([msg1, msg2]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(testDb),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
+        ],
+        child: const MaterialApp(
+          home: ReaderScreen(messageId: 'msg_reader_1'),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Verify ReaderScreen loaded
+    expect(find.text('Tech Digest #1'), findsOneWidget);
+
+    // Verify AppBar button "All emails from this sender" is present
+    final allMailsAppBarBtn = find.byKey(const ValueKey('reader_view_all_from_sender_btn'));
+    expect(allMailsAppBarBtn, findsOneWidget);
+
+    // Tap the AppBar button to open all emails from this sender
+    await tester.tap(allMailsAppBarBtn);
+    await tester.pumpAndSettle();
+
+    // Verify SenderEmailsScreen is open showing all emails from newsletter@techdaily.com
+    expect(find.byType(SenderEmailsScreen), findsOneWidget);
+    expect(find.text('Tech Digest #1'), findsOneWidget);
+    expect(find.text('Tech Digest #2'), findsOneWidget);
+    expect(find.text('2 emails'), findsOneWidget);
+
+    // Tap back button
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    // Verify back on ReaderScreen
+    expect(find.text('Tech Digest #1'), findsOneWidget);
+
+    // Expand sender box
+    await tester.tap(find.byKey(const ValueKey('reader_sender_box')));
+    await tester.pumpAndSettle();
+
+    // Verify "All Mails from Sender" button is present in expanded card
+    final senderCardAllMailsBtn = find.byKey(const ValueKey('reader_sender_all_emails_btn'));
+    expect(senderCardAllMailsBtn, findsOneWidget);
 
     await testDb.close();
   });

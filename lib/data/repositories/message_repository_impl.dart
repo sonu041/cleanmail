@@ -3,6 +3,7 @@ import '../../core/services/google_auth_service.dart';
 import '../../core/services/log_service.dart';
 import '../../domain/models/category.dart';
 import '../../domain/models/message.dart';
+import '../../domain/models/sender_rule.dart';
 import '../../domain/models/sender_summary.dart';
 import '../../domain/repositories/message_repository.dart';
 import '../local/database.dart';
@@ -54,7 +55,18 @@ class MessageRepositoryImpl implements MessageRepository {
 
   @override
   Future<void> saveMessages(List<MailMessage> messages) async {
+    // Look up sender rules for incoming emails to automatically apply preferred tags
+    final senderEmails = messages.map((m) => m.senderEmail.toLowerCase().trim()).toSet();
+    final rulesMap = await _db.getSenderRulesForEmails(senderEmails.toList());
+
     final companions = messages.map((m) {
+      final emailKey = m.senderEmail.toLowerCase().trim();
+      final rule = rulesMap[emailKey];
+
+      final String effectiveCategory = rule != null ? rule.preferredCategory : m.category.name;
+      final String? effectiveCustomTag = rule?.customTag ?? m.customTag;
+      final bool effectiveIsLocked = (rule != null && rule.isAutoLocked) ? true : m.isLocked;
+
       return MessagesTableCompanion(
         id: Value(m.id),
         accountId: Value(m.accountId),
@@ -65,17 +77,29 @@ class MessageRepositoryImpl implements MessageRepository {
         subject: Value(m.subject),
         snippet: Value(m.snippet),
         plainTextBody: Value(m.plainTextBody),
-        category: Value(m.category.name),
+        category: Value(effectiveCategory),
+        customTag: Value(effectiveCustomTag),
         unsubscribeUrl: Value(m.unsubscribeUrl),
         unsubscribeMailto: Value(m.unsubscribeMailto),
         isRead: Value(m.isRead),
         isArchived: Value(m.isArchived),
         isStarred: Value(m.isStarred),
+        isLocked: Value(effectiveIsLocked),
         receivedAt: Value(m.receivedAt),
       );
     }).toList();
 
     await _db.insertOrUpdateMessages(companions);
+  }
+
+  @override
+  Future<void> setLocked(String messageId, bool isLocked) async {
+    await _db.setLocked(messageId, isLocked);
+    AppLogger.info(
+      isLocked ? 'Message Locked' : 'Message Unlocked',
+      '${isLocked ? "Locked" : "Unlocked"} message $messageId',
+      category: LogCategory.triage,
+    );
   }
 
   @override
@@ -121,6 +145,15 @@ class MessageRepositoryImpl implements MessageRepository {
   @override
   Future<void> delete(String messageId) async {
     final entry = await _db.getMessageById(messageId);
+    if (entry != null && entry.isLocked) {
+      AppLogger.warning(
+        'Delete Blocked',
+        'Cannot delete locked message: "${entry.subject}"',
+        category: LogCategory.triage,
+      );
+      return;
+    }
+
     await _db.deleteMessage(messageId);
     AppLogger.info(
       'Message Trashed',
@@ -142,16 +175,20 @@ class MessageRepositoryImpl implements MessageRepository {
     if (messageIds.isEmpty) return [];
 
     final entries = await _db.getMessagesByIds(messageIds);
-    final deletedMessages = entries.map(_mapToDomain).toList();
+    // Never delete locked messages
+    final deletableEntries = entries.where((e) => !e.isLocked).toList();
+    if (deletableEntries.isEmpty) return [];
+
+    final deletedMessages = deletableEntries.map(_mapToDomain).toList();
     final byAccount = <String, List<String>>{};
 
-    for (final entry in entries) {
+    for (final entry in deletableEntries) {
       if (entry.remoteMessageId.isNotEmpty) {
         byAccount.putIfAbsent(entry.accountId, () => []).add(entry.remoteMessageId);
       }
     }
 
-    await _db.deleteMessages(messageIds);
+    await _db.deleteMessages(deletableEntries.map((e) => e.id).toList());
 
     AppLogger.success(
       'Batch Delete',
@@ -253,6 +290,13 @@ class MessageRepositoryImpl implements MessageRepository {
   }
 
   @override
+  Stream<List<MailMessage>> watchMessagesBySender(String senderEmail) {
+    return _db.watchMessagesBySenderEmail(senderEmail).map((entries) {
+      return entries.map(_mapToDomain).toList();
+    });
+  }
+
+  @override
   Future<int> archiveAllFromSender(String senderEmail) async {
     final entries = await _db.getMessagesBySenderEmail(senderEmail);
     final byAccount = <String, List<String>>{};
@@ -285,16 +329,16 @@ class MessageRepositoryImpl implements MessageRepository {
 
   @override
   Future<int> deleteAllFromSender(String senderEmail) async {
-    // 1. Collect all remote IDs from this sender grouped by accountId
+    // 1. Collect all non-locked remote IDs from this sender grouped by accountId
     final entries = await _db.getMessagesBySenderEmail(senderEmail);
     final byAccount = <String, List<String>>{};
     for (final e in entries) {
-      if (e.remoteMessageId.isNotEmpty) {
+      if (!e.isLocked && e.remoteMessageId.isNotEmpty) {
         byAccount.putIfAbsent(e.accountId, () => []).add(e.remoteMessageId);
       }
     }
 
-    // 2. Delete locally from SQLite
+    // 2. Delete non-locked locally from SQLite
     final count = await _db.deleteAllFromSender(senderEmail);
     AppLogger.success(
       'Sender Sweep Delete',
@@ -326,12 +370,85 @@ class MessageRepositoryImpl implements MessageRepository {
       snippet: entry.snippet,
       plainTextBody: entry.plainTextBody,
       category: MailCategory.fromString(entry.category),
+      customTag: entry.customTag,
       unsubscribeUrl: entry.unsubscribeUrl,
       unsubscribeMailto: entry.unsubscribeMailto,
       isRead: entry.isRead,
       isArchived: entry.isArchived,
       isStarred: entry.isStarred,
+      isLocked: entry.isLocked,
       receivedAt: entry.receivedAt,
+    );
+  }
+
+  // ----------------------------------------------------
+  // PREFERRED TAGS & SENDER RULES
+  // ----------------------------------------------------
+
+  @override
+  Future<void> setSenderRule(SenderRule rule, {bool applyToExisting = true}) async {
+    final lower = rule.senderEmail.toLowerCase().trim();
+    final companion = SenderRulesTableCompanion(
+      senderEmail: Value(lower),
+      preferredCategory: Value(rule.preferredCategory.name),
+      customTag: Value(rule.customTag),
+      isAutoLocked: Value(rule.isAutoLocked),
+      createdAt: Value(rule.createdAt),
+      updatedAt: Value(rule.updatedAt),
+    );
+
+    await _db.insertOrUpdateSenderRule(companion);
+    AppLogger.info(
+      'Preferred Tag Set',
+      'Configured [${rule.preferredCategory.label}] for $lower${rule.isAutoLocked ? " (Auto-Locked)" : ""}',
+      category: LogCategory.triage,
+    );
+
+    if (applyToExisting) {
+      final updatedCount = await _db.updateExistingMessagesFromSender(
+        senderEmail: lower,
+        category: rule.preferredCategory.name,
+        customTag: rule.customTag,
+        isAutoLocked: rule.isAutoLocked,
+      );
+      AppLogger.info(
+        'Sender Tag Rule Applied',
+        'Updated $updatedCount existing messages from $lower with preferred tag',
+        category: LogCategory.triage,
+      );
+    }
+  }
+
+  @override
+  Future<SenderRule?> getSenderRule(String senderEmail) async {
+    final entry = await _db.getSenderRule(senderEmail);
+    return entry != null ? _mapRuleToDomain(entry) : null;
+  }
+
+  @override
+  Stream<List<SenderRule>> watchSenderRules() {
+    return _db.watchAllSenderRules().map((list) => list.map(_mapRuleToDomain).toList());
+  }
+
+  @override
+  Future<void> deleteSenderRule(String senderEmail) async {
+    final lower = senderEmail.toLowerCase().trim();
+    await _db.deleteSenderRule(lower);
+    AppLogger.info(
+      'Sender Tag Rule Removed',
+      'Removed preferred tag rule for $lower',
+      category: LogCategory.triage,
+    );
+  }
+
+  SenderRule _mapRuleToDomain(SenderRuleEntry entry) {
+    return SenderRule(
+      senderEmail: entry.senderEmail,
+      preferredCategory: MailCategory.fromString(entry.preferredCategory),
+      customTag: entry.customTag,
+      isAutoLocked: entry.isAutoLocked,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
     );
   }
 }

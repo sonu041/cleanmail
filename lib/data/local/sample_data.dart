@@ -22,6 +22,7 @@ class SampleDataSeeder {
       provider: MailProvider.gmail,
       avatarColorValue: 0xFF1E88E5, // Clean Blue
       lastSyncedAt: DateTime.now(),
+      totalMessages: 4,
     );
 
     final workAccount = MailAccount(
@@ -31,6 +32,7 @@ class SampleDataSeeder {
       provider: MailProvider.outlook,
       avatarColorValue: 0xFF8E24AA, // Clean Purple
       lastSyncedAt: DateTime.now(),
+      totalMessages: 3,
     );
 
     await accountRepo.saveAccount(personalAccount);

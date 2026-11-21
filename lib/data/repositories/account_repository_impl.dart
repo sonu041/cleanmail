@@ -31,6 +31,7 @@ class AccountRepositoryImpl implements AccountRepository {
         provider: Value(account.provider.name),
         avatarColorValue: Value(account.avatarColorValue),
         lastSyncedAt: Value(account.lastSyncedAt),
+        totalMessages: Value(account.totalMessages),
       ),
     );
   }
@@ -46,6 +47,12 @@ class AccountRepositoryImpl implements AccountRepository {
     await saveAccount(account.copyWith(lastSyncedAt: timestamp));
   }
 
+  @override
+  Future<void> updateTotalMessages(String accountId, int totalMessages) async {
+    final account = (await getAccounts()).firstWhere((a) => a.id == accountId);
+    await saveAccount(account.copyWith(totalMessages: totalMessages));
+  }
+
   MailAccount _mapToDomain(AccountEntry entry) {
     return MailAccount(
       id: entry.id,
@@ -54,6 +61,7 @@ class AccountRepositoryImpl implements AccountRepository {
       provider: MailProvider.fromString(entry.provider),
       avatarColorValue: entry.avatarColorValue,
       lastSyncedAt: entry.lastSyncedAt,
+      totalMessages: entry.totalMessages,
     );
   }
 }

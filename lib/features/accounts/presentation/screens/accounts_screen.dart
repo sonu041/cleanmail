@@ -22,6 +22,8 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
   final GoogleAuthService _googleAuth = GoogleAuthService();
   bool _isConnecting = false;
   String? _syncingAccountId;
+  String? _syncStatusMessage;
+  double? _syncProgressValue;
   bool _isGsiInitialized = false;
 
   @override
@@ -62,6 +64,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
   @override
   Widget build(BuildContext context) {
     final accountsAsync = ref.watch(accountsStreamProvider);
+    final syncedCounts = ref.watch(syncedMessageCountsByAccountProvider).asData?.value ?? <String, int>{};
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -115,7 +118,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                         ),
                       ),
                     ] else ...[
-                      ...accounts.map((account) => _buildAccountTile(context, account)),
+                      ...accounts.map((account) => _buildAccountTile(context, account, syncedCounts)),
                     ],
 
                     const SizedBox(height: 24),
@@ -307,14 +310,29 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     }
   }
 
-  Future<void> _handleResyncAccount(MailAccount account) async {
-    setState(() => _syncingAccountId = account.id);
+  Future<void> _handleSmartSyncAccount(MailAccount account) async {
+    setState(() {
+      _syncingAccountId = account.id;
+      _syncStatusMessage = 'Checking for latest emails...';
+      _syncProgressValue = null;
+    });
     final messenger = ScaffoldMessenger.of(context);
 
     try {
-      final result = await _googleAuth.resyncAccount(
+      final result = await _googleAuth.syncMailboxSmart(
         account: account,
         messageRepo: ref.read(messageRepositoryProvider),
+        accountRepo: ref.read(accountRepositoryProvider),
+        onProgress: (current, total, status) {
+          if (mounted) {
+            setState(() {
+              _syncStatusMessage = status;
+              if (total > 0) {
+                _syncProgressValue = (current / total).clamp(0.0, 1.0);
+              }
+            });
+          }
+        },
       );
 
       if (!mounted) return;
@@ -331,19 +349,53 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
           ),
         );
       } else {
+        final syncedInDb = await ref
+            .read(databaseProvider)
+            .getSyncedMessageCountForAccount(account.id);
+        final totalAvail = result.totalAvailable > 0
+            ? result.totalAvailable
+            : (syncedInDb > 0 ? syncedInDb : 0);
+
+        String message;
+        if (result.olderSynced) {
+          if (result.syncedCount > 0) {
+            message = 'Latest emails up to date. Synced ${result.syncedCount} older emails for ${account.email} ($syncedInDb of $totalAvail synced)';
+          } else {
+            message = 'All emails in ${account.email} are synced ($syncedInDb of $totalAvail synced)';
+          }
+        } else {
+          if (result.syncedCount > 0) {
+            message = 'Synced ${result.syncedCount} latest emails for ${account.email} ($syncedInDb of $totalAvail synced)';
+          } else {
+            message = 'Mailbox ${account.email} is completely up to date ($syncedInDb of $totalAvail synced)';
+          }
+        }
+
         messenger.showSnackBar(
           SnackBar(
-            content: Text(
-              result.syncedCount > 0
-                  ? 'Delta Sync complete: synced ${result.syncedCount} changes for ${account.email}!'
-                  : 'Delta Sync complete: ${account.email} is already up to date!',
-            ),
-            backgroundColor: AppTheme.archiveColor,
+            content: Text(message),
+            backgroundColor: const Color(0xFF10B981),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Sync error: $e'),
+            backgroundColor: AppTheme.deleteColor,
           ),
         );
       }
     } finally {
-      if (mounted) setState(() => _syncingAccountId = null);
+      if (mounted) {
+        setState(() {
+          _syncingAccountId = null;
+          _syncStatusMessage = null;
+          _syncProgressValue = null;
+        });
+      }
     }
   }
 
@@ -426,73 +478,205 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     );
   }
 
-  Widget _buildAccountTile(BuildContext context, MailAccount account) {
+  Widget _buildAccountTile(
+    BuildContext context,
+    MailAccount account,
+    Map<String, int> syncedCounts,
+  ) {
     final isSyncing = _syncingAccountId == account.id;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isNerd = AppTheme.isNerd(context);
+
+    // Number of emails currently synced in local DB for this mailbox (X)
+    final syncedCount = syncedCounts[account.id] ?? 0;
+
+    // Total emails available in mailbox (Y)
+    final totalAvailable = account.totalMessages > 0
+        ? account.totalMessages
+        : (syncedCount > 0 ? syncedCount : 0);
+
+    // Calculate progress ratio (0.0 to 1.0) and percentage
+    final double progress = totalAvailable > 0
+        ? (syncedCount / totalAvailable).clamp(0.0, 1.0)
+        : 1.0;
+    final int percentage = totalAvailable > 0
+        ? ((syncedCount / totalAvailable) * 100).clamp(0, 100).toInt()
+        : 100;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Color(account.avatarColorValue),
-          child: Text(
-            account.displayName.isNotEmpty ? account.displayName[0].toUpperCase() : '@',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-        ),
-        title: Text(account.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(account.email),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Resync button
-            if (account.provider == MailProvider.gmail)
-              IconButton(
-                icon: isSyncing
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.sync, color: AppTheme.lightPrimary),
-                tooltip: 'Sync Emails Now',
-                onPressed: isSyncing ? null : () => _handleResyncAccount(account),
-              ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: AppTheme.deleteColor),
-              tooltip: 'Disconnect Account',
-              onPressed: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: Text('Disconnect ${account.displayName}?'),
-                    content: const Text('This will remove the mailbox and cached emails from this device.'),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                      FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: AppTheme.deleteColor),
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('Disconnect'),
+            // 1. Account Identity & Actions
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Color(account.avatarColorValue),
+                  child: Text(
+                    account.displayName.isNotEmpty ? account.displayName[0].toUpperCase() : '@',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              account.displayName,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: (isNerd ? AppTheme.nerdPrimary : AppTheme.lightPrimary).withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              account.provider.label,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: isNerd ? AppTheme.nerdPrimary : AppTheme.lightPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        account.email,
+                        style: TextStyle(fontSize: 12, color: AppTheme.textSecondary(context)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
-                );
-
-                if (confirm == true) {
-                  await ref.read(accountRepositoryProvider).deleteAccount(account.id);
-                  await _googleAuth.clearStoredHistoryId(account.id);
-                  await _googleAuth.clearStoredToken(account.id);
-                  AppLogger.warning(
-                    'Mailbox Disconnected',
-                    'Disconnected ${account.displayName} (${account.email}), purged local cache, token, and delta checkpoint',
-                    category: LogCategory.auth,
-                    metadata: {'email': account.email, 'accountId': account.id},
-                  );
-                }
-              },
+                ),
+                // Resync button
+                if (account.provider == MailProvider.gmail)
+                  IconButton(
+                    key: ValueKey('sync_account_btn_${account.id}'),
+                    icon: isSyncing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.sync, color: AppTheme.lightPrimary),
+                    tooltip: 'Sync Emails Now',
+                    onPressed: isSyncing ? null : () => _handleSmartSyncAccount(account),
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: AppTheme.deleteColor),
+                  tooltip: 'Disconnect Account',
+                  onPressed: () => _handleDisconnectAccount(account),
+                ),
+              ],
             ),
+
+            const SizedBox(height: 14),
+
+            // 2. Sync Progress Bar & Stats
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '$syncedCount of $totalAvailable synced ($percentage%)',
+                  key: ValueKey('sync_text_${account.id}'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isNerd ? AppTheme.nerdPrimary : null,
+                  ),
+                ),
+                Text(
+                  'Total in mailbox: $totalAvailable',
+                  key: ValueKey('total_text_${account.id}'),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: AppTheme.textSecondary(context),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 6),
+
+            // 3. Progress Bar
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                key: ValueKey('sync_progress_bar_${account.id}'),
+                value: isSyncing && _syncProgressValue != null ? _syncProgressValue : progress,
+                minHeight: 6,
+                backgroundColor: isDark ? Colors.white12 : Colors.black12,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  isNerd
+                      ? AppTheme.nerdPrimary
+                      : (progress >= 1.0 ? const Color(0xFF10B981) : AppTheme.lightPrimary),
+                ),
+              ),
+            ),
+
+            // 4. Live Sync Status Message (during active sync)
+            if (isSyncing && _syncStatusMessage != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                _syncStatusMessage!,
+                key: ValueKey('sync_status_${account.id}'),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                  color: isNerd ? AppTheme.nerdAccentCyan : AppTheme.lightPrimary,
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _handleDisconnectAccount(MailAccount account) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Disconnect ${account.displayName}?'),
+        content: const Text('This will remove the mailbox and cached emails from this device.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.deleteColor),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Disconnect'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await ref.read(accountRepositoryProvider).deleteAccount(account.id);
+      await _googleAuth.clearStoredHistoryId(account.id);
+      await _googleAuth.clearStoredToken(account.id);
+      AppLogger.warning(
+        'Mailbox Disconnected',
+        'Disconnected ${account.displayName} (${account.email}), purged local cache, token, and delta checkpoint',
+        category: LogCategory.auth,
+        metadata: {'email': account.email, 'accountId': account.id},
+      );
+    }
   }
 }

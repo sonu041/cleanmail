@@ -6,4 +6,5 @@ abstract class AccountRepository {
   Future<void> saveAccount(MailAccount account);
   Future<void> deleteAccount(String id);
   Future<void> updateSyncTime(String accountId, DateTime timestamp);
+  Future<void> updateTotalMessages(String accountId, int totalMessages);
 }

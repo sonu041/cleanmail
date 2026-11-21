@@ -9,6 +9,7 @@ import '../data/repositories/message_repository_impl.dart';
 import '../domain/models/account.dart';
 import '../domain/models/category.dart';
 import '../domain/models/message.dart';
+import '../domain/models/sender_rule.dart';
 import '../domain/models/sender_summary.dart';
 
 // ----------------------------------------------------
@@ -116,6 +117,12 @@ final messageCountsByAccountProvider = StreamProvider<Map<String, int>>((ref) {
   return repo.watchMessageCountsByAccount();
 });
 
+// Reactive total synced message counts (including all messages in local DB) grouped by accountId
+final syncedMessageCountsByAccountProvider = StreamProvider<Map<String, int>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchSyncedMessageCountsByAccount();
+});
+
 // Reactive message counts grouped by category for the selected account
 final messageCountsByCategoryProvider = StreamProvider<Map<String, int>>((ref) {
   final repo = ref.watch(messageRepositoryProvider);
@@ -143,6 +150,25 @@ final senderSummariesStreamProvider = StreamProvider<List<SenderSummary>>((ref) 
   final accountId = ref.watch(selectedAccountIdProvider);
 
   return repo.watchSenderSummaries(accountId: accountId);
+});
+
+// Reactive sender rules stream
+final senderRulesStreamProvider = StreamProvider<List<SenderRule>>((ref) {
+  final repo = ref.watch(messageRepositoryProvider);
+  return repo.watchSenderRules();
+});
+
+// Single sender rule provider
+final senderRuleProvider = FutureProvider.family<SenderRule?, String>((ref, senderEmail) {
+  final repo = ref.watch(messageRepositoryProvider);
+  return repo.getSenderRule(senderEmail);
+});
+
+// Reactive stream of active messages from a specific sender
+final senderMessagesStreamProvider =
+    StreamProvider.family<List<MailMessage>, String>((ref, senderEmail) {
+  final repo = ref.watch(messageRepositoryProvider);
+  return repo.watchMessagesBySender(senderEmail);
 });
 
 // Search query provider for filtering inbox on the fly

@@ -1,5 +1,6 @@
 import '../models/message.dart';
 import '../models/category.dart';
+import '../models/sender_rule.dart';
 import '../models/sender_summary.dart';
 
 abstract class MessageRepository {
@@ -16,6 +17,7 @@ abstract class MessageRepository {
   Future<void> saveMessages(List<MailMessage> messages);
   Future<void> markRead(String messageId, bool isRead);
   Future<void> archive(String messageId, bool isArchived);
+  Future<void> setLocked(String messageId, bool isLocked);
   Future<void> delete(String messageId);
   Future<List<MailMessage>> deleteMultiple(List<String> messageIds);
   Future<void> restoreMessage(MailMessage message);
@@ -31,6 +33,13 @@ abstract class MessageRepository {
 
   // Easy-to-clean: Sender Sweep
   Stream<List<SenderSummary>> watchSenderSummaries({String? accountId});
+  Stream<List<MailMessage>> watchMessagesBySender(String senderEmail);
   Future<int> archiveAllFromSender(String senderEmail);
   Future<int> deleteAllFromSender(String senderEmail);
+
+  // Preferred Tags & Sender Rules
+  Future<void> setSenderRule(SenderRule rule, {bool applyToExisting = true});
+  Future<SenderRule?> getSenderRule(String senderEmail);
+  Stream<List<SenderRule>> watchSenderRules();
+  Future<void> deleteSenderRule(String senderEmail);
 }

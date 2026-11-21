@@ -6,6 +6,8 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/snackbar_utils.dart';
 import '../../../../domain/models/account.dart';
 import '../../../../domain/models/message.dart';
+import '../../../clean_sweep/presentation/screens/sender_emails_screen.dart';
+import '../../../inbox/presentation/widgets/set_preferred_tag_dialog.dart';
 import '../../../providers.dart';
 
 class ReaderScreen extends ConsumerStatefulWidget {
@@ -59,6 +61,19 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     }
   }
 
+  void _openSenderEmails() {
+    if (_message == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SenderEmailsScreen(
+          senderEmail: _message!.senderEmail,
+          senderName: _message!.senderName,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -77,24 +92,58 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     }
 
     final msg = _message!;
+    final isNerd = AppTheme.isNerd(context);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Text Viewer', style: TextStyle(fontSize: 18)),
         actions: [
-          // Archive
+          // All emails from this sender
           IconButton(
-            icon: const Icon(Icons.archive_outlined),
-            tooltip: 'Archive',
+            key: const ValueKey('reader_view_all_from_sender_btn'),
+            icon: const Icon(Icons.all_inbox_outlined),
+            tooltip: 'All emails from ${msg.senderEmail}',
+            onPressed: _openSenderEmails,
+          ),
+          // Preferred Tag for sender
+          IconButton(
+            key: const ValueKey('reader_pref_tag_btn'),
+            icon: const Icon(Icons.label_outlined),
+            tooltip: 'Set preferred tag for sender',
+            onPressed: () async {
+              await showSetPreferredTagDialog(
+                context: context,
+                ref: ref,
+                senderEmail: msg.senderEmail,
+                senderName: msg.senderName,
+                currentCategory: msg.category,
+                currentCustomTag: msg.customTag,
+              );
+              _loadMessage();
+            },
+          ),
+          // Lock / Unlock toggle
+          IconButton(
+            key: const ValueKey('reader_lock_btn'),
+            icon: Icon(msg.isLocked ? Icons.lock : Icons.lock_open_outlined),
+            color: msg.isLocked
+                ? (isNerd ? AppTheme.nerdAccentRed : Colors.amber.shade800)
+                : null,
+            tooltip: msg.isLocked ? 'Unlock email' : 'Lock email',
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
-              await ref.read(messageRepositoryProvider).archive(msg.id, true);
-              if (context.mounted) {
-                Navigator.pop(context);
+              final newLocked = !msg.isLocked;
+              await ref.read(messageRepositoryProvider).setLocked(msg.id, newLocked);
+              if (mounted) {
+                setState(() {
+                  _message = msg.copyWith(isLocked: newLocked);
+                });
                 SnackBarUtils.showAutoHideSnackBar(
                   messenger: messenger,
-                  message: 'Message archived',
-                  duration: const Duration(seconds: 5),
+                  message: newLocked
+                      ? 'Email locked (deletion protected)'
+                      : 'Email unlocked',
+                  duration: const Duration(seconds: 3),
                 );
               }
             },
@@ -141,6 +190,44 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                    // Locked tag banner
+                    if (msg.isLocked) ...[
+                      Container(
+                        key: const ValueKey('reader_locked_tag'),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: (isNerd ? AppTheme.nerdAccentRed : Colors.amber.shade800).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(isNerd ? 2 : 6),
+                          border: Border.all(
+                            color: isNerd ? AppTheme.nerdAccentRed : Colors.amber.shade800,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.lock,
+                              size: 14,
+                              color: isNerd ? AppTheme.nerdAccentRed : Colors.amber.shade800,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              isNerd ? '[LOCKED] DELETION PROTECTED' : 'LOCKED • Deletion Protected',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.6,
+                                color: isNerd ? AppTheme.nerdAccentRed : Colors.amber.shade800,
+                                fontFamily: AppTheme.fontFamily(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     // Subject header
                     Text(
                       msg.subject,
@@ -285,6 +372,40 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                             label: isNerd ? 'DATE & TIME:' : 'Date & Time:',
                             value: _formatFullDate(msg.receivedAt, isNerd),
                             isNerd: isNerd,
+                          ),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              OutlinedButton.icon(
+                                key: const ValueKey('reader_sender_all_emails_btn'),
+                                icon: const Icon(Icons.list_alt_rounded, size: 16),
+                                label: const Text('All Mails from Sender', style: TextStyle(fontSize: 12)),
+                                onPressed: _openSenderEmails,
+                              ),
+                              OutlinedButton.icon(
+                                key: const ValueKey('reader_sender_tag_btn'),
+                                icon: const Icon(Icons.label_outlined, size: 16),
+                                label: Text(
+                                  msg.customTag != null
+                                      ? 'Set Tag (${msg.category.label} • ${msg.customTag})'
+                                      : 'Set Tag (${msg.category.label})',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                onPressed: () async {
+                                  await showSetPreferredTagDialog(
+                                    context: context,
+                                    ref: ref,
+                                    senderEmail: msg.senderEmail,
+                                    senderName: msg.senderName,
+                                    currentCategory: msg.category,
+                                    currentCustomTag: msg.customTag,
+                                  );
+                                  _loadMessage();
+                                },
+                              ),
+                            ],
                           ),
                         ],
                       ],
@@ -451,6 +572,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   Future<void> _handleDelete(MailMessage msg) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (msg.isLocked) {
+      SnackBarUtils.showAutoHideSnackBar(
+        messenger: messenger,
+        message: 'This email is locked. Unlock it first to delete.',
+        duration: const Duration(seconds: 5),
+      );
+      return;
+    }
+
     final now = DateTime.now();
     if (_lastDeleteTapTime != null &&
         now.difference(_lastDeleteTapTime!).inMilliseconds < 500) {
@@ -459,7 +591,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     _lastDeleteTapTime = now;
 
     final repo = ref.read(messageRepositoryProvider);
-    final messenger = ScaffoldMessenger.of(context);
 
     await repo.delete(msg.id);
     if (!mounted) return;
@@ -551,16 +682,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Unsubscribed from ${msg.senderName}'),
-            action: SnackBarAction(
-              label: 'Archive past',
-              onPressed: () async {
-                await ref.read(messageRepositoryProvider).archiveAllFromSender(msg.senderEmail);
-              },
-            ),
-          ),
+        SnackBarUtils.showAutoHideSnackBar(
+          messenger: ScaffoldMessenger.of(context),
+          message: 'Unsubscribed from ${msg.senderName}',
+          duration: const Duration(seconds: 4),
         );
       }
     }

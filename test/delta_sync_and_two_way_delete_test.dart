@@ -1,8 +1,12 @@
 import 'package:cleanmail/core/services/google_auth_service.dart';
 import 'package:cleanmail/data/local/database.dart';
+import 'package:cleanmail/data/repositories/account_repository_impl.dart';
 import 'package:cleanmail/data/repositories/message_repository_impl.dart';
+import 'package:cleanmail/domain/models/account.dart';
 import 'package:cleanmail/domain/models/category.dart';
 import 'package:cleanmail/domain/models/message.dart';
+import 'package:cleanmail/domain/models/sender_rule.dart';
+import 'package:cleanmail/domain/repositories/message_repository.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -59,6 +63,49 @@ class FakeGoogleAuthService extends GoogleAuthService {
       archivedAccountIds.add(accountId);
     }
     return true;
+  }
+}
+
+class SmartSyncFakeGoogleAuthService extends GoogleAuthService {
+  int resyncCallCount = 0;
+  int syncOlderCallCount = 0;
+  int syncOlderRequestedCount = 0;
+  int resyncReturnCount = 0;
+  int olderReturnCount = 100;
+  int profileMessagesTotal = 500;
+
+  @override
+  Future<Map<String, String>?> getAuthHeadersForAccount([String? accountId]) async {
+    return {'Authorization': 'Bearer fake_token'};
+  }
+
+  @override
+  Future<({String? historyId, int? messagesTotal})> fetchCurrentProfile({
+    required Map<String, String> authHeaders,
+  }) async {
+    return (historyId: 'fake_hist_1', messagesTotal: profileMessagesTotal);
+  }
+
+  @override
+  Future<({int syncedCount, String? error})> resyncAccount({
+    required MailAccount account,
+    required MessageRepository messageRepo,
+  }) async {
+    resyncCallCount++;
+    return (syncedCount: resyncReturnCount, error: null);
+  }
+
+  @override
+  Future<({int syncedCount, bool hasMore, String? error})> syncOlderGmailMessages({
+    required MailAccount account,
+    required MessageRepository messageRepo,
+    int count = 20,
+    void Function(int current, int total, String status)? onProgress,
+  }) async {
+    syncOlderCallCount++;
+    syncOlderRequestedCount = count;
+    onProgress?.call(olderReturnCount, count, 'Syncing older emails: $olderReturnCount of $count...');
+    return (syncedCount: olderReturnCount, hasMore: true, error: null);
   }
 }
 
@@ -598,5 +645,356 @@ void main() {
 
     // Verify remote untrash commands dispatched
     expect(fakeGoogleAuth.untrashedRemoteIds, containsAll(['remote_gmail_101', 'remote_gmail_102']));
+  });
+
+  test('watchSenderSummaries loads aggregated senders without SQL type errors', () async {
+    final senderMsg1 = MailMessage(
+      id: 'sweep_1',
+      accountId: 'acc1',
+      remoteMessageId: 'rem_sw1',
+      senderEmail: 'promo@store.com',
+      senderName: 'Promo Store',
+      subject: 'Weekly Deals',
+      snippet: 'Big savings',
+      plainTextBody: 'Deals here',
+      category: MailCategory.updates,
+      isRead: false,
+      receivedAt: DateTime(2026, 11, 20, 12, 0),
+    );
+
+    final senderMsg2 = MailMessage(
+      id: 'sweep_2',
+      accountId: 'acc1',
+      remoteMessageId: 'rem_sw2',
+      senderEmail: 'promo@store.com',
+      senderName: 'Promo Store',
+      subject: 'Final Hours',
+      snippet: 'Ending soon',
+      plainTextBody: 'Final hours here',
+      category: MailCategory.updates,
+      isRead: true,
+      receivedAt: DateTime(2026, 11, 21, 8, 0),
+    );
+
+    await messageRepo.saveMessages([senderMsg1, senderMsg2]);
+
+    final summaries = await messageRepo.watchSenderSummaries().first;
+    expect(summaries.length, equals(1));
+    final promoSummary = summaries.first;
+    expect(promoSummary.senderEmail, equals('promo@store.com'));
+    expect(promoSummary.senderName, equals('Promo Store'));
+    expect(promoSummary.totalCount, equals(2));
+    expect(promoSummary.unreadCount, equals(1));
+    expect(promoSummary.latestSubject, equals('Final Hours'));
+    expect(promoSummary.lastReceivedAt.isAfter(DateTime(2026, 11, 20)), isTrue);
+  });
+
+  test('watchMessagesBySender reactively streams active messages for a specific sender', () async {
+    final senderMsg1 = MailMessage(
+      id: 'sender_mail_1',
+      accountId: 'acc1',
+      remoteMessageId: 'rem_sm1',
+      senderEmail: 'author@news.com',
+      senderName: 'Author',
+      subject: 'Newsletter #1',
+      snippet: 'News 1',
+      plainTextBody: 'Body 1',
+      category: MailCategory.newsletters,
+      isRead: false,
+      receivedAt: DateTime(2026, 11, 20, 10, 0),
+    );
+
+    final senderMsg2 = MailMessage(
+      id: 'sender_mail_2',
+      accountId: 'acc1',
+      remoteMessageId: 'rem_sm2',
+      senderEmail: 'author@news.com',
+      senderName: 'Author',
+      subject: 'Newsletter #2',
+      snippet: 'News 2',
+      plainTextBody: 'Body 2',
+      category: MailCategory.newsletters,
+      isRead: true,
+      receivedAt: DateTime(2026, 11, 21, 10, 0),
+    );
+
+    final otherMsg = MailMessage(
+      id: 'sender_mail_3',
+      accountId: 'acc1',
+      remoteMessageId: 'rem_sm3',
+      senderEmail: 'other@service.com',
+      senderName: 'Other',
+      subject: 'Service Alert',
+      snippet: 'Alert',
+      plainTextBody: 'Alert body',
+      category: MailCategory.updates,
+      isRead: false,
+      receivedAt: DateTime(2026, 11, 21, 11, 0),
+    );
+
+    await messageRepo.saveMessages([senderMsg1, senderMsg2, otherMsg]);
+
+    final authorMessages = await messageRepo.watchMessagesBySender('author@news.com').first;
+    expect(authorMessages.length, equals(2));
+    expect(authorMessages.first.subject, equals('Newsletter #2'));
+    expect(authorMessages.last.subject, equals('Newsletter #1'));
+
+    // Archive one message
+    await messageRepo.archive('sender_mail_2', true);
+    final remaining = await messageRepo.watchMessagesBySender('author@news.com').first;
+    expect(remaining.length, equals(1));
+    expect(remaining.first.id, equals('sender_mail_1'));
+  });
+
+  test('Email locking: setLocked toggles lock state and prevents single delete', () async {
+    final lockedMessage = MailMessage(
+      id: 'lock_test_1',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_lock_1',
+      senderEmail: 'bank@secure.com',
+      senderName: 'Bank Alerts',
+      subject: 'Important Statement',
+      snippet: 'Your statement is ready',
+      plainTextBody: 'Statement details',
+      category: MailCategory.transactions,
+      isRead: true,
+      receivedAt: DateTime.now(),
+      isLocked: false,
+    );
+
+    await messageRepo.saveMessages([lockedMessage]);
+
+    // Lock the email
+    await messageRepo.setLocked('lock_test_1', true);
+    var fetched = await messageRepo.getMessage('lock_test_1');
+    expect(fetched, isNotNull);
+    expect(fetched!.isLocked, isTrue);
+
+    // Attempt to delete locked email: must be prevented!
+    await messageRepo.delete('lock_test_1');
+
+    // Message must still exist in DB
+    fetched = await messageRepo.getMessage('lock_test_1');
+    expect(fetched, isNotNull);
+    expect(fetched!.isLocked, isTrue);
+    expect(fakeGoogleAuth.trashedRemoteIds, isNot(contains('rem_lock_1')));
+
+    // Unlock the email
+    await messageRepo.setLocked('lock_test_1', false);
+    fetched = await messageRepo.getMessage('lock_test_1');
+    expect(fetched!.isLocked, isFalse);
+
+    // Now delete succeeds
+    await messageRepo.delete('lock_test_1');
+    fetched = await messageRepo.getMessage('lock_test_1');
+    expect(fetched, isNull);
+    expect(fakeGoogleAuth.trashedRemoteIds, contains('rem_lock_1'));
+  });
+
+  test('Email locking: deleteMultiple and deleteAllFromSender preserve locked emails', () async {
+    final lockedMsg = MailMessage(
+      id: 'locked_multi_1',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_lm1',
+      senderEmail: 'promo@shop.com',
+      senderName: 'Shop',
+      subject: 'Keep This Receipt',
+      snippet: 'Receipt details',
+      plainTextBody: 'Receipt',
+      category: MailCategory.transactions,
+      isRead: true,
+      receivedAt: DateTime.now(),
+      isLocked: true,
+    );
+
+    final unlockedMsg = MailMessage(
+      id: 'unlocked_multi_2',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_um2',
+      senderEmail: 'promo@shop.com',
+      senderName: 'Shop',
+      subject: 'Spam Offer',
+      snippet: 'Spam snippet',
+      plainTextBody: 'Spam',
+      category: MailCategory.updates,
+      isRead: false,
+      receivedAt: DateTime.now(),
+      isLocked: false,
+    );
+
+    await messageRepo.saveMessages([lockedMsg, unlockedMsg]);
+
+    // deleteMultiple: only unlocked message is deleted
+    final deleted = await messageRepo.deleteMultiple(['locked_multi_1', 'unlocked_multi_2']);
+    expect(deleted.map((m) => m.id), contains('unlocked_multi_2'));
+    expect(deleted.map((m) => m.id), isNot(contains('locked_multi_1')));
+
+    // lockedMsg still exists
+    var fetchedLocked = await messageRepo.getMessage('locked_multi_1');
+    expect(fetchedLocked, isNotNull);
+    expect(fetchedLocked!.isLocked, isTrue);
+
+    // Add another unlocked message from same sender
+    final unlockedMsg2 = MailMessage(
+      id: 'unlocked_multi_3',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_um3',
+      senderEmail: 'promo@shop.com',
+      senderName: 'Shop',
+      subject: 'Another Offer',
+      snippet: 'Another offer',
+      plainTextBody: 'Body',
+      category: MailCategory.updates,
+      isRead: false,
+      receivedAt: DateTime.now(),
+      isLocked: false,
+    );
+    await messageRepo.saveMessages([unlockedMsg2]);
+
+    // deleteAllFromSender: deletes only unlocked, keeps locked!
+    final sweepDeletedCount = await messageRepo.deleteAllFromSender('promo@shop.com');
+    expect(sweepDeletedCount, equals(1)); // only unlockedMsg2 was deleted
+
+    // lockedMsg is STILL preserved!
+    fetchedLocked = await messageRepo.getMessage('locked_multi_1');
+    expect(fetchedLocked, isNotNull);
+    expect(fetchedLocked!.isLocked, isTrue);
+  });
+
+  test('Sender rules: setSenderRule updates existing emails and going forward automatically tags incoming emails', () async {
+    // 1. Initial message classified as newsletters by default
+    final initialMsg = MailMessage(
+      id: 'rule_msg_1',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_rule_1',
+      senderEmail: 'boss@corp.com',
+      senderName: 'The Boss',
+      subject: 'Weekly Team Newsletter',
+      snippet: 'Important team announcements',
+      plainTextBody: 'Announcements here',
+      category: MailCategory.newsletters, // misclassified
+      isRead: false,
+      receivedAt: DateTime.now(),
+      isLocked: false,
+    );
+    await messageRepo.saveMessages([initialMsg]);
+
+    var fetched1 = await messageRepo.getMessage('rule_msg_1');
+    expect(fetched1!.category, equals(MailCategory.newsletters));
+    expect(fetched1.customTag, isNull);
+    expect(fetched1.isLocked, isFalse);
+
+    // 2. Set preferred tag rule for 'boss@corp.com' to Personal, with custom tag 'VIP', and autoLock = true
+    final rule = SenderRule(
+      senderEmail: 'boss@corp.com',
+      preferredCategory: MailCategory.personal,
+      customTag: 'VIP',
+      isAutoLocked: true,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+    await messageRepo.setSenderRule(rule, applyToExisting: true);
+
+    // 3. Existing message was updated
+    fetched1 = await messageRepo.getMessage('rule_msg_1');
+    expect(fetched1!.category, equals(MailCategory.personal));
+    expect(fetched1.customTag, equals('VIP'));
+    expect(fetched1.isLocked, isTrue);
+
+    // 4. Going forward: new email comes in from 'boss@corp.com' with default/heuristic category 'newsletters'
+    final incomingMsg = MailMessage(
+      id: 'rule_msg_2',
+      accountId: 'account_1',
+      remoteMessageId: 'rem_rule_2',
+      senderEmail: 'boss@corp.com',
+      senderName: 'The Boss',
+      subject: 'Urgent Task',
+      snippet: 'Please complete this today',
+      plainTextBody: 'Task details',
+      category: MailCategory.newsletters, // raw incoming category from heuristic
+      isRead: false,
+      receivedAt: DateTime.now(),
+      isLocked: false,
+    );
+    await messageRepo.saveMessages([incomingMsg]);
+
+    // Verify incoming email automatically received preferred category Personal, customTag 'VIP', and isLocked = true!
+    final fetched2 = await messageRepo.getMessage('rule_msg_2');
+    expect(fetched2!.category, equals(MailCategory.personal));
+    expect(fetched2.customTag, equals('VIP'));
+    expect(fetched2.isLocked, isTrue);
+
+    // 5. Querying and removing rule
+    final retrievedRule = await messageRepo.getSenderRule('boss@corp.com');
+    expect(retrievedRule, isNotNull);
+    expect(retrievedRule!.preferredCategory, equals(MailCategory.personal));
+    expect(retrievedRule.customTag, equals('VIP'));
+    expect(retrievedRule.isAutoLocked, isTrue);
+
+    await messageRepo.deleteSenderRule('boss@corp.com');
+    final afterDeleteRule = await messageRepo.getSenderRule('boss@corp.com');
+    expect(afterDeleteRule, isNull);
+  });
+
+  test('Smart Sync: refresh first syncs latest emails, and if already synced, syncs a batch of 100 older emails', () async {
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+    final smartAuth = SmartSyncFakeGoogleAuthService();
+    final testMessageRepo = MessageRepositoryImpl(testDb, smartAuth);
+
+    const account = MailAccount(
+      id: 'acc_smart_1',
+      email: 'work@corp.com',
+      displayName: 'Work Mailbox',
+      provider: MailProvider.gmail,
+      avatarColorValue: 0xFF1E88E5,
+      totalMessages: 0,
+    );
+    await testAccountRepo.saveAccount(account);
+
+    // Case 1: Latest emails are available (resyncReturnCount = 5)
+    smartAuth.resyncReturnCount = 5;
+    smartAuth.profileMessagesTotal = 350;
+
+    final result1 = await smartAuth.syncMailboxSmart(
+      account: account,
+      messageRepo: testMessageRepo,
+      accountRepo: testAccountRepo,
+    );
+
+    expect(smartAuth.resyncCallCount, equals(1));
+    expect(smartAuth.syncOlderCallCount, equals(0)); // Did not need to fetch older
+    expect(result1.syncedCount, equals(5));
+    expect(result1.olderSynced, isFalse);
+    expect(result1.totalAvailable, equals(350));
+
+    // Verify account's totalMessages was updated
+    final updatedAccount = (await testAccountRepo.getAccounts()).firstWhere((a) => a.id == 'acc_smart_1');
+    expect(updatedAccount.totalMessages, equals(350));
+
+    // Case 2: Latest emails are already synced (resyncReturnCount = 0)
+    // Should proceed to fetch older emails in a batch of 100
+    smartAuth.resyncReturnCount = 0;
+    smartAuth.olderReturnCount = 100;
+    smartAuth.profileMessagesTotal = 350;
+
+    String? lastProgressStatus;
+    final result2 = await smartAuth.syncMailboxSmart(
+      account: updatedAccount,
+      messageRepo: testMessageRepo,
+      accountRepo: testAccountRepo,
+      onProgress: (current, total, status) {
+        lastProgressStatus = status;
+      },
+    );
+
+    expect(smartAuth.resyncCallCount, equals(2)); // Called resync first
+    expect(smartAuth.syncOlderCallCount, equals(1)); // Proceeded to fetch older
+    expect(smartAuth.syncOlderRequestedCount, equals(100)); // Batch of 100
+    expect(result2.syncedCount, equals(100));
+    expect(result2.olderSynced, isTrue);
+    expect(lastProgressStatus, contains('Syncing older emails'));
+
+    await testDb.close();
   });
 }

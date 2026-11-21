@@ -8,6 +8,7 @@ class AccountsTable extends Table {
   TextColumn get provider => text()(); // 'gmail', 'outlook'
   IntColumn get avatarColorValue => integer()();
   DateTimeColumn get lastSyncedAt => dateTime().nullable()();
+  IntColumn get totalMessages => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};

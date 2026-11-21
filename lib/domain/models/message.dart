@@ -11,11 +11,13 @@ class MailMessage {
   final String snippet;
   final String plainTextBody;
   final MailCategory category;
+  final String? customTag;
   final String? unsubscribeUrl;
   final String? unsubscribeMailto;
   final bool isRead;
   final bool isArchived;
   final bool isStarred;
+  final bool isLocked;
   final DateTime receivedAt;
 
   const MailMessage({
@@ -29,11 +31,13 @@ class MailMessage {
     required this.snippet,
     required this.plainTextBody,
     required this.category,
+    this.customTag,
     this.unsubscribeUrl,
     this.unsubscribeMailto,
     this.isRead = false,
     this.isArchived = false,
     this.isStarred = false,
+    this.isLocked = false,
     required this.receivedAt,
   });
 
@@ -52,11 +56,13 @@ class MailMessage {
     String? snippet,
     String? plainTextBody,
     MailCategory? category,
+    String? customTag,
     String? unsubscribeUrl,
     String? unsubscribeMailto,
     bool? isRead,
     bool? isArchived,
     bool? isStarred,
+    bool? isLocked,
     DateTime? receivedAt,
   }) {
     return MailMessage(
@@ -70,11 +76,13 @@ class MailMessage {
       snippet: snippet ?? this.snippet,
       plainTextBody: plainTextBody ?? this.plainTextBody,
       category: category ?? this.category,
+      customTag: customTag ?? this.customTag,
       unsubscribeUrl: unsubscribeUrl ?? this.unsubscribeUrl,
       unsubscribeMailto: unsubscribeMailto ?? this.unsubscribeMailto,
       isRead: isRead ?? this.isRead,
       isArchived: isArchived ?? this.isArchived,
       isStarred: isStarred ?? this.isStarred,
+      isLocked: isLocked ?? this.isLocked,
       receivedAt: receivedAt ?? this.receivedAt,
     );
   }

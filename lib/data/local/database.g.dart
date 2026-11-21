@@ -43,9 +43,24 @@ class $AccountsTableTable extends AccountsTable
   late final GeneratedColumn<DateTime> lastSyncedAt = GeneratedColumn<DateTime>(
       'last_synced_at', aliasedName, true,
       type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _totalMessagesMeta =
+      const VerificationMeta('totalMessages');
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, email, displayName, provider, avatarColorValue, lastSyncedAt];
+  late final GeneratedColumn<int> totalMessages = GeneratedColumn<int>(
+      'total_messages', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        email,
+        displayName,
+        provider,
+        avatarColorValue,
+        lastSyncedAt,
+        totalMessages
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -95,6 +110,12 @@ class $AccountsTableTable extends AccountsTable
           lastSyncedAt.isAcceptableOrUnknown(
               data['last_synced_at']!, _lastSyncedAtMeta));
     }
+    if (data.containsKey('total_messages')) {
+      context.handle(
+          _totalMessagesMeta,
+          totalMessages.isAcceptableOrUnknown(
+              data['total_messages']!, _totalMessagesMeta));
+    }
     return context;
   }
 
@@ -116,6 +137,8 @@ class $AccountsTableTable extends AccountsTable
           DriftSqlType.int, data['${effectivePrefix}avatar_color_value'])!,
       lastSyncedAt: attachedDatabase.typeMapping.read(
           DriftSqlType.dateTime, data['${effectivePrefix}last_synced_at']),
+      totalMessages: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}total_messages'])!,
     );
   }
 
@@ -132,13 +155,15 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
   final String provider;
   final int avatarColorValue;
   final DateTime? lastSyncedAt;
+  final int totalMessages;
   const AccountEntry(
       {required this.id,
       required this.email,
       required this.displayName,
       required this.provider,
       required this.avatarColorValue,
-      this.lastSyncedAt});
+      this.lastSyncedAt,
+      required this.totalMessages});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -150,6 +175,7 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
     if (!nullToAbsent || lastSyncedAt != null) {
       map['last_synced_at'] = Variable<DateTime>(lastSyncedAt);
     }
+    map['total_messages'] = Variable<int>(totalMessages);
     return map;
   }
 
@@ -163,6 +189,7 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
       lastSyncedAt: lastSyncedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastSyncedAt),
+      totalMessages: Value(totalMessages),
     );
   }
 
@@ -176,6 +203,7 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
       provider: serializer.fromJson<String>(json['provider']),
       avatarColorValue: serializer.fromJson<int>(json['avatarColorValue']),
       lastSyncedAt: serializer.fromJson<DateTime?>(json['lastSyncedAt']),
+      totalMessages: serializer.fromJson<int>(json['totalMessages']),
     );
   }
   @override
@@ -188,6 +216,7 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
       'provider': serializer.toJson<String>(provider),
       'avatarColorValue': serializer.toJson<int>(avatarColorValue),
       'lastSyncedAt': serializer.toJson<DateTime?>(lastSyncedAt),
+      'totalMessages': serializer.toJson<int>(totalMessages),
     };
   }
 
@@ -197,7 +226,8 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
           String? displayName,
           String? provider,
           int? avatarColorValue,
-          Value<DateTime?> lastSyncedAt = const Value.absent()}) =>
+          Value<DateTime?> lastSyncedAt = const Value.absent(),
+          int? totalMessages}) =>
       AccountEntry(
         id: id ?? this.id,
         email: email ?? this.email,
@@ -206,6 +236,7 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
         avatarColorValue: avatarColorValue ?? this.avatarColorValue,
         lastSyncedAt:
             lastSyncedAt.present ? lastSyncedAt.value : this.lastSyncedAt,
+        totalMessages: totalMessages ?? this.totalMessages,
       );
   AccountEntry copyWithCompanion(AccountsTableCompanion data) {
     return AccountEntry(
@@ -220,6 +251,9 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
       lastSyncedAt: data.lastSyncedAt.present
           ? data.lastSyncedAt.value
           : this.lastSyncedAt,
+      totalMessages: data.totalMessages.present
+          ? data.totalMessages.value
+          : this.totalMessages,
     );
   }
 
@@ -231,14 +265,15 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
           ..write('displayName: $displayName, ')
           ..write('provider: $provider, ')
           ..write('avatarColorValue: $avatarColorValue, ')
-          ..write('lastSyncedAt: $lastSyncedAt')
+          ..write('lastSyncedAt: $lastSyncedAt, ')
+          ..write('totalMessages: $totalMessages')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, email, displayName, provider, avatarColorValue, lastSyncedAt);
+  int get hashCode => Object.hash(id, email, displayName, provider,
+      avatarColorValue, lastSyncedAt, totalMessages);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -248,7 +283,8 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
           other.displayName == this.displayName &&
           other.provider == this.provider &&
           other.avatarColorValue == this.avatarColorValue &&
-          other.lastSyncedAt == this.lastSyncedAt);
+          other.lastSyncedAt == this.lastSyncedAt &&
+          other.totalMessages == this.totalMessages);
 }
 
 class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
@@ -258,6 +294,7 @@ class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
   final Value<String> provider;
   final Value<int> avatarColorValue;
   final Value<DateTime?> lastSyncedAt;
+  final Value<int> totalMessages;
   final Value<int> rowid;
   const AccountsTableCompanion({
     this.id = const Value.absent(),
@@ -266,6 +303,7 @@ class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
     this.provider = const Value.absent(),
     this.avatarColorValue = const Value.absent(),
     this.lastSyncedAt = const Value.absent(),
+    this.totalMessages = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   AccountsTableCompanion.insert({
@@ -275,6 +313,7 @@ class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
     required String provider,
     required int avatarColorValue,
     this.lastSyncedAt = const Value.absent(),
+    this.totalMessages = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         email = Value(email),
@@ -288,6 +327,7 @@ class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
     Expression<String>? provider,
     Expression<int>? avatarColorValue,
     Expression<DateTime>? lastSyncedAt,
+    Expression<int>? totalMessages,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -297,6 +337,7 @@ class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
       if (provider != null) 'provider': provider,
       if (avatarColorValue != null) 'avatar_color_value': avatarColorValue,
       if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
+      if (totalMessages != null) 'total_messages': totalMessages,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -308,6 +349,7 @@ class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
       Value<String>? provider,
       Value<int>? avatarColorValue,
       Value<DateTime?>? lastSyncedAt,
+      Value<int>? totalMessages,
       Value<int>? rowid}) {
     return AccountsTableCompanion(
       id: id ?? this.id,
@@ -316,6 +358,7 @@ class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
       provider: provider ?? this.provider,
       avatarColorValue: avatarColorValue ?? this.avatarColorValue,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      totalMessages: totalMessages ?? this.totalMessages,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -341,6 +384,9 @@ class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
     if (lastSyncedAt.present) {
       map['last_synced_at'] = Variable<DateTime>(lastSyncedAt.value);
     }
+    if (totalMessages.present) {
+      map['total_messages'] = Variable<int>(totalMessages.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -356,6 +402,7 @@ class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
           ..write('provider: $provider, ')
           ..write('avatarColorValue: $avatarColorValue, ')
           ..write('lastSyncedAt: $lastSyncedAt, ')
+          ..write('totalMessages: $totalMessages, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -427,6 +474,12 @@ class $MessagesTableTable extends MessagesTable
   late final GeneratedColumn<String> category = GeneratedColumn<String>(
       'category', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _customTagMeta =
+      const VerificationMeta('customTag');
+  @override
+  late final GeneratedColumn<String> customTag = GeneratedColumn<String>(
+      'custom_tag', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _unsubscribeUrlMeta =
       const VerificationMeta('unsubscribeUrl');
   @override
@@ -468,6 +521,16 @@ class $MessagesTableTable extends MessagesTable
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("is_starred" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _isLockedMeta =
+      const VerificationMeta('isLocked');
+  @override
+  late final GeneratedColumn<bool> isLocked = GeneratedColumn<bool>(
+      'is_locked', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_locked" IN (0, 1))'),
+      defaultValue: const Constant(false));
   static const VerificationMeta _receivedAtMeta =
       const VerificationMeta('receivedAt');
   @override
@@ -486,11 +549,13 @@ class $MessagesTableTable extends MessagesTable
         snippet,
         plainTextBody,
         category,
+        customTag,
         unsubscribeUrl,
         unsubscribeMailto,
         isRead,
         isArchived,
         isStarred,
+        isLocked,
         receivedAt
       ];
   @override
@@ -568,6 +633,10 @@ class $MessagesTableTable extends MessagesTable
     } else if (isInserting) {
       context.missing(_categoryMeta);
     }
+    if (data.containsKey('custom_tag')) {
+      context.handle(_customTagMeta,
+          customTag.isAcceptableOrUnknown(data['custom_tag']!, _customTagMeta));
+    }
     if (data.containsKey('unsubscribe_url')) {
       context.handle(
           _unsubscribeUrlMeta,
@@ -593,6 +662,10 @@ class $MessagesTableTable extends MessagesTable
     if (data.containsKey('is_starred')) {
       context.handle(_isStarredMeta,
           isStarred.isAcceptableOrUnknown(data['is_starred']!, _isStarredMeta));
+    }
+    if (data.containsKey('is_locked')) {
+      context.handle(_isLockedMeta,
+          isLocked.isAcceptableOrUnknown(data['is_locked']!, _isLockedMeta));
     }
     if (data.containsKey('received_at')) {
       context.handle(
@@ -631,6 +704,8 @@ class $MessagesTableTable extends MessagesTable
           DriftSqlType.string, data['${effectivePrefix}plain_text_body'])!,
       category: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}category'])!,
+      customTag: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}custom_tag']),
       unsubscribeUrl: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}unsubscribe_url']),
       unsubscribeMailto: attachedDatabase.typeMapping.read(
@@ -641,6 +716,8 @@ class $MessagesTableTable extends MessagesTable
           .read(DriftSqlType.bool, data['${effectivePrefix}is_archived'])!,
       isStarred: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_starred'])!,
+      isLocked: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_locked'])!,
       receivedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}received_at'])!,
     );
@@ -663,11 +740,13 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
   final String snippet;
   final String plainTextBody;
   final String category;
+  final String? customTag;
   final String? unsubscribeUrl;
   final String? unsubscribeMailto;
   final bool isRead;
   final bool isArchived;
   final bool isStarred;
+  final bool isLocked;
   final DateTime receivedAt;
   const MessageEntry(
       {required this.id,
@@ -680,11 +759,13 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
       required this.snippet,
       required this.plainTextBody,
       required this.category,
+      this.customTag,
       this.unsubscribeUrl,
       this.unsubscribeMailto,
       required this.isRead,
       required this.isArchived,
       required this.isStarred,
+      required this.isLocked,
       required this.receivedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -701,6 +782,9 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
     map['snippet'] = Variable<String>(snippet);
     map['plain_text_body'] = Variable<String>(plainTextBody);
     map['category'] = Variable<String>(category);
+    if (!nullToAbsent || customTag != null) {
+      map['custom_tag'] = Variable<String>(customTag);
+    }
     if (!nullToAbsent || unsubscribeUrl != null) {
       map['unsubscribe_url'] = Variable<String>(unsubscribeUrl);
     }
@@ -710,6 +794,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
     map['is_read'] = Variable<bool>(isRead);
     map['is_archived'] = Variable<bool>(isArchived);
     map['is_starred'] = Variable<bool>(isStarred);
+    map['is_locked'] = Variable<bool>(isLocked);
     map['received_at'] = Variable<DateTime>(receivedAt);
     return map;
   }
@@ -728,6 +813,9 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
       snippet: Value(snippet),
       plainTextBody: Value(plainTextBody),
       category: Value(category),
+      customTag: customTag == null && nullToAbsent
+          ? const Value.absent()
+          : Value(customTag),
       unsubscribeUrl: unsubscribeUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(unsubscribeUrl),
@@ -737,6 +825,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
       isRead: Value(isRead),
       isArchived: Value(isArchived),
       isStarred: Value(isStarred),
+      isLocked: Value(isLocked),
       receivedAt: Value(receivedAt),
     );
   }
@@ -755,12 +844,14 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
       snippet: serializer.fromJson<String>(json['snippet']),
       plainTextBody: serializer.fromJson<String>(json['plainTextBody']),
       category: serializer.fromJson<String>(json['category']),
+      customTag: serializer.fromJson<String?>(json['customTag']),
       unsubscribeUrl: serializer.fromJson<String?>(json['unsubscribeUrl']),
       unsubscribeMailto:
           serializer.fromJson<String?>(json['unsubscribeMailto']),
       isRead: serializer.fromJson<bool>(json['isRead']),
       isArchived: serializer.fromJson<bool>(json['isArchived']),
       isStarred: serializer.fromJson<bool>(json['isStarred']),
+      isLocked: serializer.fromJson<bool>(json['isLocked']),
       receivedAt: serializer.fromJson<DateTime>(json['receivedAt']),
     );
   }
@@ -778,11 +869,13 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
       'snippet': serializer.toJson<String>(snippet),
       'plainTextBody': serializer.toJson<String>(plainTextBody),
       'category': serializer.toJson<String>(category),
+      'customTag': serializer.toJson<String?>(customTag),
       'unsubscribeUrl': serializer.toJson<String?>(unsubscribeUrl),
       'unsubscribeMailto': serializer.toJson<String?>(unsubscribeMailto),
       'isRead': serializer.toJson<bool>(isRead),
       'isArchived': serializer.toJson<bool>(isArchived),
       'isStarred': serializer.toJson<bool>(isStarred),
+      'isLocked': serializer.toJson<bool>(isLocked),
       'receivedAt': serializer.toJson<DateTime>(receivedAt),
     };
   }
@@ -798,11 +891,13 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
           String? snippet,
           String? plainTextBody,
           String? category,
+          Value<String?> customTag = const Value.absent(),
           Value<String?> unsubscribeUrl = const Value.absent(),
           Value<String?> unsubscribeMailto = const Value.absent(),
           bool? isRead,
           bool? isArchived,
           bool? isStarred,
+          bool? isLocked,
           DateTime? receivedAt}) =>
       MessageEntry(
         id: id ?? this.id,
@@ -815,6 +910,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
         snippet: snippet ?? this.snippet,
         plainTextBody: plainTextBody ?? this.plainTextBody,
         category: category ?? this.category,
+        customTag: customTag.present ? customTag.value : this.customTag,
         unsubscribeUrl:
             unsubscribeUrl.present ? unsubscribeUrl.value : this.unsubscribeUrl,
         unsubscribeMailto: unsubscribeMailto.present
@@ -823,6 +919,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
         isRead: isRead ?? this.isRead,
         isArchived: isArchived ?? this.isArchived,
         isStarred: isStarred ?? this.isStarred,
+        isLocked: isLocked ?? this.isLocked,
         receivedAt: receivedAt ?? this.receivedAt,
       );
   MessageEntry copyWithCompanion(MessagesTableCompanion data) {
@@ -843,6 +940,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
           ? data.plainTextBody.value
           : this.plainTextBody,
       category: data.category.present ? data.category.value : this.category,
+      customTag: data.customTag.present ? data.customTag.value : this.customTag,
       unsubscribeUrl: data.unsubscribeUrl.present
           ? data.unsubscribeUrl.value
           : this.unsubscribeUrl,
@@ -853,6 +951,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
       isArchived:
           data.isArchived.present ? data.isArchived.value : this.isArchived,
       isStarred: data.isStarred.present ? data.isStarred.value : this.isStarred,
+      isLocked: data.isLocked.present ? data.isLocked.value : this.isLocked,
       receivedAt:
           data.receivedAt.present ? data.receivedAt.value : this.receivedAt,
     );
@@ -871,11 +970,13 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
           ..write('snippet: $snippet, ')
           ..write('plainTextBody: $plainTextBody, ')
           ..write('category: $category, ')
+          ..write('customTag: $customTag, ')
           ..write('unsubscribeUrl: $unsubscribeUrl, ')
           ..write('unsubscribeMailto: $unsubscribeMailto, ')
           ..write('isRead: $isRead, ')
           ..write('isArchived: $isArchived, ')
           ..write('isStarred: $isStarred, ')
+          ..write('isLocked: $isLocked, ')
           ..write('receivedAt: $receivedAt')
           ..write(')'))
         .toString();
@@ -893,11 +994,13 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
       snippet,
       plainTextBody,
       category,
+      customTag,
       unsubscribeUrl,
       unsubscribeMailto,
       isRead,
       isArchived,
       isStarred,
+      isLocked,
       receivedAt);
   @override
   bool operator ==(Object other) =>
@@ -913,11 +1016,13 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
           other.snippet == this.snippet &&
           other.plainTextBody == this.plainTextBody &&
           other.category == this.category &&
+          other.customTag == this.customTag &&
           other.unsubscribeUrl == this.unsubscribeUrl &&
           other.unsubscribeMailto == this.unsubscribeMailto &&
           other.isRead == this.isRead &&
           other.isArchived == this.isArchived &&
           other.isStarred == this.isStarred &&
+          other.isLocked == this.isLocked &&
           other.receivedAt == this.receivedAt);
 }
 
@@ -932,11 +1037,13 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
   final Value<String> snippet;
   final Value<String> plainTextBody;
   final Value<String> category;
+  final Value<String?> customTag;
   final Value<String?> unsubscribeUrl;
   final Value<String?> unsubscribeMailto;
   final Value<bool> isRead;
   final Value<bool> isArchived;
   final Value<bool> isStarred;
+  final Value<bool> isLocked;
   final Value<DateTime> receivedAt;
   final Value<int> rowid;
   const MessagesTableCompanion({
@@ -950,11 +1057,13 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
     this.snippet = const Value.absent(),
     this.plainTextBody = const Value.absent(),
     this.category = const Value.absent(),
+    this.customTag = const Value.absent(),
     this.unsubscribeUrl = const Value.absent(),
     this.unsubscribeMailto = const Value.absent(),
     this.isRead = const Value.absent(),
     this.isArchived = const Value.absent(),
     this.isStarred = const Value.absent(),
+    this.isLocked = const Value.absent(),
     this.receivedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -969,11 +1078,13 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
     required String snippet,
     required String plainTextBody,
     required String category,
+    this.customTag = const Value.absent(),
     this.unsubscribeUrl = const Value.absent(),
     this.unsubscribeMailto = const Value.absent(),
     this.isRead = const Value.absent(),
     this.isArchived = const Value.absent(),
     this.isStarred = const Value.absent(),
+    this.isLocked = const Value.absent(),
     required DateTime receivedAt,
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -997,11 +1108,13 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
     Expression<String>? snippet,
     Expression<String>? plainTextBody,
     Expression<String>? category,
+    Expression<String>? customTag,
     Expression<String>? unsubscribeUrl,
     Expression<String>? unsubscribeMailto,
     Expression<bool>? isRead,
     Expression<bool>? isArchived,
     Expression<bool>? isStarred,
+    Expression<bool>? isLocked,
     Expression<DateTime>? receivedAt,
     Expression<int>? rowid,
   }) {
@@ -1016,11 +1129,13 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
       if (snippet != null) 'snippet': snippet,
       if (plainTextBody != null) 'plain_text_body': plainTextBody,
       if (category != null) 'category': category,
+      if (customTag != null) 'custom_tag': customTag,
       if (unsubscribeUrl != null) 'unsubscribe_url': unsubscribeUrl,
       if (unsubscribeMailto != null) 'unsubscribe_mailto': unsubscribeMailto,
       if (isRead != null) 'is_read': isRead,
       if (isArchived != null) 'is_archived': isArchived,
       if (isStarred != null) 'is_starred': isStarred,
+      if (isLocked != null) 'is_locked': isLocked,
       if (receivedAt != null) 'received_at': receivedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1037,11 +1152,13 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
       Value<String>? snippet,
       Value<String>? plainTextBody,
       Value<String>? category,
+      Value<String?>? customTag,
       Value<String?>? unsubscribeUrl,
       Value<String?>? unsubscribeMailto,
       Value<bool>? isRead,
       Value<bool>? isArchived,
       Value<bool>? isStarred,
+      Value<bool>? isLocked,
       Value<DateTime>? receivedAt,
       Value<int>? rowid}) {
     return MessagesTableCompanion(
@@ -1055,11 +1172,13 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
       snippet: snippet ?? this.snippet,
       plainTextBody: plainTextBody ?? this.plainTextBody,
       category: category ?? this.category,
+      customTag: customTag ?? this.customTag,
       unsubscribeUrl: unsubscribeUrl ?? this.unsubscribeUrl,
       unsubscribeMailto: unsubscribeMailto ?? this.unsubscribeMailto,
       isRead: isRead ?? this.isRead,
       isArchived: isArchived ?? this.isArchived,
       isStarred: isStarred ?? this.isStarred,
+      isLocked: isLocked ?? this.isLocked,
       receivedAt: receivedAt ?? this.receivedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -1098,6 +1217,9 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
     if (category.present) {
       map['category'] = Variable<String>(category.value);
     }
+    if (customTag.present) {
+      map['custom_tag'] = Variable<String>(customTag.value);
+    }
     if (unsubscribeUrl.present) {
       map['unsubscribe_url'] = Variable<String>(unsubscribeUrl.value);
     }
@@ -1112,6 +1234,9 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
     }
     if (isStarred.present) {
       map['is_starred'] = Variable<bool>(isStarred.value);
+    }
+    if (isLocked.present) {
+      map['is_locked'] = Variable<bool>(isLocked.value);
     }
     if (receivedAt.present) {
       map['received_at'] = Variable<DateTime>(receivedAt.value);
@@ -1135,12 +1260,382 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
           ..write('snippet: $snippet, ')
           ..write('plainTextBody: $plainTextBody, ')
           ..write('category: $category, ')
+          ..write('customTag: $customTag, ')
           ..write('unsubscribeUrl: $unsubscribeUrl, ')
           ..write('unsubscribeMailto: $unsubscribeMailto, ')
           ..write('isRead: $isRead, ')
           ..write('isArchived: $isArchived, ')
           ..write('isStarred: $isStarred, ')
+          ..write('isLocked: $isLocked, ')
           ..write('receivedAt: $receivedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SenderRulesTableTable extends SenderRulesTable
+    with TableInfo<$SenderRulesTableTable, SenderRuleEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SenderRulesTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _senderEmailMeta =
+      const VerificationMeta('senderEmail');
+  @override
+  late final GeneratedColumn<String> senderEmail = GeneratedColumn<String>(
+      'sender_email', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _preferredCategoryMeta =
+      const VerificationMeta('preferredCategory');
+  @override
+  late final GeneratedColumn<String> preferredCategory =
+      GeneratedColumn<String>('preferred_category', aliasedName, false,
+          type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _customTagMeta =
+      const VerificationMeta('customTag');
+  @override
+  late final GeneratedColumn<String> customTag = GeneratedColumn<String>(
+      'custom_tag', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _isAutoLockedMeta =
+      const VerificationMeta('isAutoLocked');
+  @override
+  late final GeneratedColumn<bool> isAutoLocked = GeneratedColumn<bool>(
+      'is_auto_locked', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("is_auto_locked" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns => [
+        senderEmail,
+        preferredCategory,
+        customTag,
+        isAutoLocked,
+        createdAt,
+        updatedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sender_rules_table';
+  @override
+  VerificationContext validateIntegrity(Insertable<SenderRuleEntry> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('sender_email')) {
+      context.handle(
+          _senderEmailMeta,
+          senderEmail.isAcceptableOrUnknown(
+              data['sender_email']!, _senderEmailMeta));
+    } else if (isInserting) {
+      context.missing(_senderEmailMeta);
+    }
+    if (data.containsKey('preferred_category')) {
+      context.handle(
+          _preferredCategoryMeta,
+          preferredCategory.isAcceptableOrUnknown(
+              data['preferred_category']!, _preferredCategoryMeta));
+    } else if (isInserting) {
+      context.missing(_preferredCategoryMeta);
+    }
+    if (data.containsKey('custom_tag')) {
+      context.handle(_customTagMeta,
+          customTag.isAcceptableOrUnknown(data['custom_tag']!, _customTagMeta));
+    }
+    if (data.containsKey('is_auto_locked')) {
+      context.handle(
+          _isAutoLockedMeta,
+          isAutoLocked.isAcceptableOrUnknown(
+              data['is_auto_locked']!, _isAutoLockedMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {senderEmail};
+  @override
+  SenderRuleEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SenderRuleEntry(
+      senderEmail: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}sender_email'])!,
+      preferredCategory: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}preferred_category'])!,
+      customTag: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}custom_tag']),
+      isAutoLocked: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_auto_locked'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $SenderRulesTableTable createAlias(String alias) {
+    return $SenderRulesTableTable(attachedDatabase, alias);
+  }
+}
+
+class SenderRuleEntry extends DataClass implements Insertable<SenderRuleEntry> {
+  final String senderEmail;
+  final String preferredCategory;
+  final String? customTag;
+  final bool isAutoLocked;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const SenderRuleEntry(
+      {required this.senderEmail,
+      required this.preferredCategory,
+      this.customTag,
+      required this.isAutoLocked,
+      required this.createdAt,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['sender_email'] = Variable<String>(senderEmail);
+    map['preferred_category'] = Variable<String>(preferredCategory);
+    if (!nullToAbsent || customTag != null) {
+      map['custom_tag'] = Variable<String>(customTag);
+    }
+    map['is_auto_locked'] = Variable<bool>(isAutoLocked);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  SenderRulesTableCompanion toCompanion(bool nullToAbsent) {
+    return SenderRulesTableCompanion(
+      senderEmail: Value(senderEmail),
+      preferredCategory: Value(preferredCategory),
+      customTag: customTag == null && nullToAbsent
+          ? const Value.absent()
+          : Value(customTag),
+      isAutoLocked: Value(isAutoLocked),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory SenderRuleEntry.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SenderRuleEntry(
+      senderEmail: serializer.fromJson<String>(json['senderEmail']),
+      preferredCategory: serializer.fromJson<String>(json['preferredCategory']),
+      customTag: serializer.fromJson<String?>(json['customTag']),
+      isAutoLocked: serializer.fromJson<bool>(json['isAutoLocked']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'senderEmail': serializer.toJson<String>(senderEmail),
+      'preferredCategory': serializer.toJson<String>(preferredCategory),
+      'customTag': serializer.toJson<String?>(customTag),
+      'isAutoLocked': serializer.toJson<bool>(isAutoLocked),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  SenderRuleEntry copyWith(
+          {String? senderEmail,
+          String? preferredCategory,
+          Value<String?> customTag = const Value.absent(),
+          bool? isAutoLocked,
+          DateTime? createdAt,
+          DateTime? updatedAt}) =>
+      SenderRuleEntry(
+        senderEmail: senderEmail ?? this.senderEmail,
+        preferredCategory: preferredCategory ?? this.preferredCategory,
+        customTag: customTag.present ? customTag.value : this.customTag,
+        isAutoLocked: isAutoLocked ?? this.isAutoLocked,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  SenderRuleEntry copyWithCompanion(SenderRulesTableCompanion data) {
+    return SenderRuleEntry(
+      senderEmail:
+          data.senderEmail.present ? data.senderEmail.value : this.senderEmail,
+      preferredCategory: data.preferredCategory.present
+          ? data.preferredCategory.value
+          : this.preferredCategory,
+      customTag: data.customTag.present ? data.customTag.value : this.customTag,
+      isAutoLocked: data.isAutoLocked.present
+          ? data.isAutoLocked.value
+          : this.isAutoLocked,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SenderRuleEntry(')
+          ..write('senderEmail: $senderEmail, ')
+          ..write('preferredCategory: $preferredCategory, ')
+          ..write('customTag: $customTag, ')
+          ..write('isAutoLocked: $isAutoLocked, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(senderEmail, preferredCategory, customTag,
+      isAutoLocked, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SenderRuleEntry &&
+          other.senderEmail == this.senderEmail &&
+          other.preferredCategory == this.preferredCategory &&
+          other.customTag == this.customTag &&
+          other.isAutoLocked == this.isAutoLocked &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class SenderRulesTableCompanion extends UpdateCompanion<SenderRuleEntry> {
+  final Value<String> senderEmail;
+  final Value<String> preferredCategory;
+  final Value<String?> customTag;
+  final Value<bool> isAutoLocked;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const SenderRulesTableCompanion({
+    this.senderEmail = const Value.absent(),
+    this.preferredCategory = const Value.absent(),
+    this.customTag = const Value.absent(),
+    this.isAutoLocked = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SenderRulesTableCompanion.insert({
+    required String senderEmail,
+    required String preferredCategory,
+    this.customTag = const Value.absent(),
+    this.isAutoLocked = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  })  : senderEmail = Value(senderEmail),
+        preferredCategory = Value(preferredCategory),
+        createdAt = Value(createdAt),
+        updatedAt = Value(updatedAt);
+  static Insertable<SenderRuleEntry> custom({
+    Expression<String>? senderEmail,
+    Expression<String>? preferredCategory,
+    Expression<String>? customTag,
+    Expression<bool>? isAutoLocked,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (senderEmail != null) 'sender_email': senderEmail,
+      if (preferredCategory != null) 'preferred_category': preferredCategory,
+      if (customTag != null) 'custom_tag': customTag,
+      if (isAutoLocked != null) 'is_auto_locked': isAutoLocked,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SenderRulesTableCompanion copyWith(
+      {Value<String>? senderEmail,
+      Value<String>? preferredCategory,
+      Value<String?>? customTag,
+      Value<bool>? isAutoLocked,
+      Value<DateTime>? createdAt,
+      Value<DateTime>? updatedAt,
+      Value<int>? rowid}) {
+    return SenderRulesTableCompanion(
+      senderEmail: senderEmail ?? this.senderEmail,
+      preferredCategory: preferredCategory ?? this.preferredCategory,
+      customTag: customTag ?? this.customTag,
+      isAutoLocked: isAutoLocked ?? this.isAutoLocked,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (senderEmail.present) {
+      map['sender_email'] = Variable<String>(senderEmail.value);
+    }
+    if (preferredCategory.present) {
+      map['preferred_category'] = Variable<String>(preferredCategory.value);
+    }
+    if (customTag.present) {
+      map['custom_tag'] = Variable<String>(customTag.value);
+    }
+    if (isAutoLocked.present) {
+      map['is_auto_locked'] = Variable<bool>(isAutoLocked.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SenderRulesTableCompanion(')
+          ..write('senderEmail: $senderEmail, ')
+          ..write('preferredCategory: $preferredCategory, ')
+          ..write('customTag: $customTag, ')
+          ..write('isAutoLocked: $isAutoLocked, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1152,12 +1647,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $AccountsTableTable accountsTable = $AccountsTableTable(this);
   late final $MessagesTableTable messagesTable = $MessagesTableTable(this);
+  late final $SenderRulesTableTable senderRulesTable =
+      $SenderRulesTableTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities =>
-      [accountsTable, messagesTable];
+      [accountsTable, messagesTable, senderRulesTable];
 }
 
 typedef $$AccountsTableTableCreateCompanionBuilder = AccountsTableCompanion
@@ -1168,6 +1665,7 @@ typedef $$AccountsTableTableCreateCompanionBuilder = AccountsTableCompanion
   required String provider,
   required int avatarColorValue,
   Value<DateTime?> lastSyncedAt,
+  Value<int> totalMessages,
   Value<int> rowid,
 });
 typedef $$AccountsTableTableUpdateCompanionBuilder = AccountsTableCompanion
@@ -1178,6 +1676,7 @@ typedef $$AccountsTableTableUpdateCompanionBuilder = AccountsTableCompanion
   Value<String> provider,
   Value<int> avatarColorValue,
   Value<DateTime?> lastSyncedAt,
+  Value<int> totalMessages,
   Value<int> rowid,
 });
 
@@ -1208,6 +1707,9 @@ class $$AccountsTableTableFilterComposer
 
   ColumnFilters<DateTime> get lastSyncedAt => $composableBuilder(
       column: $table.lastSyncedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get totalMessages => $composableBuilder(
+      column: $table.totalMessages, builder: (column) => ColumnFilters(column));
 }
 
 class $$AccountsTableTableOrderingComposer
@@ -1238,6 +1740,10 @@ class $$AccountsTableTableOrderingComposer
   ColumnOrderings<DateTime> get lastSyncedAt => $composableBuilder(
       column: $table.lastSyncedAt,
       builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get totalMessages => $composableBuilder(
+      column: $table.totalMessages,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$AccountsTableTableAnnotationComposer
@@ -1266,6 +1772,9 @@ class $$AccountsTableTableAnnotationComposer
 
   GeneratedColumn<DateTime> get lastSyncedAt => $composableBuilder(
       column: $table.lastSyncedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get totalMessages => $composableBuilder(
+      column: $table.totalMessages, builder: (column) => column);
 }
 
 class $$AccountsTableTableTableManager extends RootTableManager<
@@ -1300,6 +1809,7 @@ class $$AccountsTableTableTableManager extends RootTableManager<
             Value<String> provider = const Value.absent(),
             Value<int> avatarColorValue = const Value.absent(),
             Value<DateTime?> lastSyncedAt = const Value.absent(),
+            Value<int> totalMessages = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               AccountsTableCompanion(
@@ -1309,6 +1819,7 @@ class $$AccountsTableTableTableManager extends RootTableManager<
             provider: provider,
             avatarColorValue: avatarColorValue,
             lastSyncedAt: lastSyncedAt,
+            totalMessages: totalMessages,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1318,6 +1829,7 @@ class $$AccountsTableTableTableManager extends RootTableManager<
             required String provider,
             required int avatarColorValue,
             Value<DateTime?> lastSyncedAt = const Value.absent(),
+            Value<int> totalMessages = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               AccountsTableCompanion.insert(
@@ -1327,6 +1839,7 @@ class $$AccountsTableTableTableManager extends RootTableManager<
             provider: provider,
             avatarColorValue: avatarColorValue,
             lastSyncedAt: lastSyncedAt,
+            totalMessages: totalMessages,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
@@ -1367,11 +1880,13 @@ typedef $$MessagesTableTableCreateCompanionBuilder = MessagesTableCompanion
   required String snippet,
   required String plainTextBody,
   required String category,
+  Value<String?> customTag,
   Value<String?> unsubscribeUrl,
   Value<String?> unsubscribeMailto,
   Value<bool> isRead,
   Value<bool> isArchived,
   Value<bool> isStarred,
+  Value<bool> isLocked,
   required DateTime receivedAt,
   Value<int> rowid,
 });
@@ -1387,11 +1902,13 @@ typedef $$MessagesTableTableUpdateCompanionBuilder = MessagesTableCompanion
   Value<String> snippet,
   Value<String> plainTextBody,
   Value<String> category,
+  Value<String?> customTag,
   Value<String?> unsubscribeUrl,
   Value<String?> unsubscribeMailto,
   Value<bool> isRead,
   Value<bool> isArchived,
   Value<bool> isStarred,
+  Value<bool> isLocked,
   Value<DateTime> receivedAt,
   Value<int> rowid,
 });
@@ -1436,6 +1953,9 @@ class $$MessagesTableTableFilterComposer
   ColumnFilters<String> get category => $composableBuilder(
       column: $table.category, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<String> get customTag => $composableBuilder(
+      column: $table.customTag, builder: (column) => ColumnFilters(column));
+
   ColumnFilters<String> get unsubscribeUrl => $composableBuilder(
       column: $table.unsubscribeUrl,
       builder: (column) => ColumnFilters(column));
@@ -1452,6 +1972,9 @@ class $$MessagesTableTableFilterComposer
 
   ColumnFilters<bool> get isStarred => $composableBuilder(
       column: $table.isStarred, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isLocked => $composableBuilder(
+      column: $table.isLocked, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get receivedAt => $composableBuilder(
       column: $table.receivedAt, builder: (column) => ColumnFilters(column));
@@ -1498,6 +2021,9 @@ class $$MessagesTableTableOrderingComposer
   ColumnOrderings<String> get category => $composableBuilder(
       column: $table.category, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get customTag => $composableBuilder(
+      column: $table.customTag, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get unsubscribeUrl => $composableBuilder(
       column: $table.unsubscribeUrl,
       builder: (column) => ColumnOrderings(column));
@@ -1514,6 +2040,9 @@ class $$MessagesTableTableOrderingComposer
 
   ColumnOrderings<bool> get isStarred => $composableBuilder(
       column: $table.isStarred, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isLocked => $composableBuilder(
+      column: $table.isLocked, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<DateTime> get receivedAt => $composableBuilder(
       column: $table.receivedAt, builder: (column) => ColumnOrderings(column));
@@ -1558,6 +2087,9 @@ class $$MessagesTableTableAnnotationComposer
   GeneratedColumn<String> get category =>
       $composableBuilder(column: $table.category, builder: (column) => column);
 
+  GeneratedColumn<String> get customTag =>
+      $composableBuilder(column: $table.customTag, builder: (column) => column);
+
   GeneratedColumn<String> get unsubscribeUrl => $composableBuilder(
       column: $table.unsubscribeUrl, builder: (column) => column);
 
@@ -1572,6 +2104,9 @@ class $$MessagesTableTableAnnotationComposer
 
   GeneratedColumn<bool> get isStarred =>
       $composableBuilder(column: $table.isStarred, builder: (column) => column);
+
+  GeneratedColumn<bool> get isLocked =>
+      $composableBuilder(column: $table.isLocked, builder: (column) => column);
 
   GeneratedColumn<DateTime> get receivedAt => $composableBuilder(
       column: $table.receivedAt, builder: (column) => column);
@@ -1613,11 +2148,13 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             Value<String> snippet = const Value.absent(),
             Value<String> plainTextBody = const Value.absent(),
             Value<String> category = const Value.absent(),
+            Value<String?> customTag = const Value.absent(),
             Value<String?> unsubscribeUrl = const Value.absent(),
             Value<String?> unsubscribeMailto = const Value.absent(),
             Value<bool> isRead = const Value.absent(),
             Value<bool> isArchived = const Value.absent(),
             Value<bool> isStarred = const Value.absent(),
+            Value<bool> isLocked = const Value.absent(),
             Value<DateTime> receivedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -1632,11 +2169,13 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             snippet: snippet,
             plainTextBody: plainTextBody,
             category: category,
+            customTag: customTag,
             unsubscribeUrl: unsubscribeUrl,
             unsubscribeMailto: unsubscribeMailto,
             isRead: isRead,
             isArchived: isArchived,
             isStarred: isStarred,
+            isLocked: isLocked,
             receivedAt: receivedAt,
             rowid: rowid,
           ),
@@ -1651,11 +2190,13 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             required String snippet,
             required String plainTextBody,
             required String category,
+            Value<String?> customTag = const Value.absent(),
             Value<String?> unsubscribeUrl = const Value.absent(),
             Value<String?> unsubscribeMailto = const Value.absent(),
             Value<bool> isRead = const Value.absent(),
             Value<bool> isArchived = const Value.absent(),
             Value<bool> isStarred = const Value.absent(),
+            Value<bool> isLocked = const Value.absent(),
             required DateTime receivedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -1670,11 +2211,13 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             snippet: snippet,
             plainTextBody: plainTextBody,
             category: category,
+            customTag: customTag,
             unsubscribeUrl: unsubscribeUrl,
             unsubscribeMailto: unsubscribeMailto,
             isRead: isRead,
             isArchived: isArchived,
             isStarred: isStarred,
+            isLocked: isLocked,
             receivedAt: receivedAt,
             rowid: rowid,
           ),
@@ -1704,6 +2247,202 @@ typedef $$MessagesTableTableProcessedTableManager = ProcessedTableManager<
     ),
     MessageEntry,
     PrefetchHooks Function()>;
+typedef $$SenderRulesTableTableCreateCompanionBuilder
+    = SenderRulesTableCompanion Function({
+  required String senderEmail,
+  required String preferredCategory,
+  Value<String?> customTag,
+  Value<bool> isAutoLocked,
+  required DateTime createdAt,
+  required DateTime updatedAt,
+  Value<int> rowid,
+});
+typedef $$SenderRulesTableTableUpdateCompanionBuilder
+    = SenderRulesTableCompanion Function({
+  Value<String> senderEmail,
+  Value<String> preferredCategory,
+  Value<String?> customTag,
+  Value<bool> isAutoLocked,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+  Value<int> rowid,
+});
+
+class $$SenderRulesTableTableFilterComposer
+    extends Composer<_$AppDatabase, $SenderRulesTableTable> {
+  $$SenderRulesTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get senderEmail => $composableBuilder(
+      column: $table.senderEmail, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get preferredCategory => $composableBuilder(
+      column: $table.preferredCategory,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get customTag => $composableBuilder(
+      column: $table.customTag, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isAutoLocked => $composableBuilder(
+      column: $table.isAutoLocked, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$SenderRulesTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $SenderRulesTableTable> {
+  $$SenderRulesTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get senderEmail => $composableBuilder(
+      column: $table.senderEmail, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get preferredCategory => $composableBuilder(
+      column: $table.preferredCategory,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get customTag => $composableBuilder(
+      column: $table.customTag, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isAutoLocked => $composableBuilder(
+      column: $table.isAutoLocked,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$SenderRulesTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SenderRulesTableTable> {
+  $$SenderRulesTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get senderEmail => $composableBuilder(
+      column: $table.senderEmail, builder: (column) => column);
+
+  GeneratedColumn<String> get preferredCategory => $composableBuilder(
+      column: $table.preferredCategory, builder: (column) => column);
+
+  GeneratedColumn<String> get customTag =>
+      $composableBuilder(column: $table.customTag, builder: (column) => column);
+
+  GeneratedColumn<bool> get isAutoLocked => $composableBuilder(
+      column: $table.isAutoLocked, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$SenderRulesTableTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $SenderRulesTableTable,
+    SenderRuleEntry,
+    $$SenderRulesTableTableFilterComposer,
+    $$SenderRulesTableTableOrderingComposer,
+    $$SenderRulesTableTableAnnotationComposer,
+    $$SenderRulesTableTableCreateCompanionBuilder,
+    $$SenderRulesTableTableUpdateCompanionBuilder,
+    (
+      SenderRuleEntry,
+      BaseReferences<_$AppDatabase, $SenderRulesTableTable, SenderRuleEntry>
+    ),
+    SenderRuleEntry,
+    PrefetchHooks Function()> {
+  $$SenderRulesTableTableTableManager(
+      _$AppDatabase db, $SenderRulesTableTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SenderRulesTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SenderRulesTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SenderRulesTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> senderEmail = const Value.absent(),
+            Value<String> preferredCategory = const Value.absent(),
+            Value<String?> customTag = const Value.absent(),
+            Value<bool> isAutoLocked = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              SenderRulesTableCompanion(
+            senderEmail: senderEmail,
+            preferredCategory: preferredCategory,
+            customTag: customTag,
+            isAutoLocked: isAutoLocked,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String senderEmail,
+            required String preferredCategory,
+            Value<String?> customTag = const Value.absent(),
+            Value<bool> isAutoLocked = const Value.absent(),
+            required DateTime createdAt,
+            required DateTime updatedAt,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              SenderRulesTableCompanion.insert(
+            senderEmail: senderEmail,
+            preferredCategory: preferredCategory,
+            customTag: customTag,
+            isAutoLocked: isAutoLocked,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable<$SenderRulesTableTable, SenderRuleEntry>(table),
+                    BaseReferences<_$AppDatabase, $SenderRulesTableTable,
+                        SenderRuleEntry>(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$SenderRulesTableTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $SenderRulesTableTable,
+    SenderRuleEntry,
+    $$SenderRulesTableTableFilterComposer,
+    $$SenderRulesTableTableOrderingComposer,
+    $$SenderRulesTableTableAnnotationComposer,
+    $$SenderRulesTableTableCreateCompanionBuilder,
+    $$SenderRulesTableTableUpdateCompanionBuilder,
+    (
+      SenderRuleEntry,
+      BaseReferences<_$AppDatabase, $SenderRulesTableTable, SenderRuleEntry>
+    ),
+    SenderRuleEntry,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -1712,4 +2451,6 @@ class $AppDatabaseManager {
       $$AccountsTableTableTableManager(_db, _db.accountsTable);
   $$MessagesTableTableTableManager get messagesTable =>
       $$MessagesTableTableTableManager(_db, _db.messagesTable);
+  $$SenderRulesTableTableTableManager get senderRulesTable =>
+      $$SenderRulesTableTableTableManager(_db, _db.senderRulesTable);
 }

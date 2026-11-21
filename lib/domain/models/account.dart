@@ -22,6 +22,7 @@ class MailAccount {
   final MailProvider provider;
   final int avatarColorValue;
   final DateTime? lastSyncedAt;
+  final int totalMessages;
 
   const MailAccount({
     required this.id,
@@ -30,6 +31,7 @@ class MailAccount {
     required this.provider,
     required this.avatarColorValue,
     this.lastSyncedAt,
+    this.totalMessages = 0,
   });
 
   MailAccount copyWith({
@@ -39,6 +41,7 @@ class MailAccount {
     MailProvider? provider,
     int? avatarColorValue,
     DateTime? lastSyncedAt,
+    int? totalMessages,
   }) {
     return MailAccount(
       id: id ?? this.id,
@@ -47,6 +50,7 @@ class MailAccount {
       provider: provider ?? this.provider,
       avatarColorValue: avatarColorValue ?? this.avatarColorValue,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      totalMessages: totalMessages ?? this.totalMessages,
     );
   }
 }
