@@ -418,35 +418,171 @@ class GoogleAuthService {
     }
   }
 
-  /// Bulk-trashes multiple remote messages in Gmail in small parallel batches.
+  /// Bulk-trashes multiple remote messages in Gmail in small parallel batches with automatic 401 token recovery.
+  /// Reports progress via [onProgress] and incrementally notifies confirmed deleted message IDs via [onChunkSuccess].
   Future<int> batchTrashGmailMessages({
     required List<String> remoteMessageIds,
     String? accountId,
+    void Function(int current, int total)? onProgress,
+    Future<void> Function(List<String> successfulRemoteIds)? onChunkSuccess,
   }) async {
     if (remoteMessageIds.isEmpty) return 0;
-    final headers = await getAuthHeadersForAccount(accountId);
-    if (headers == null) return 0;
+
+    Map<String, String>? headers;
+    try {
+      headers = await getAuthHeadersForAccount(accountId);
+      headers ??= await _getValidAuthHeaders();
+    } catch (e) {
+      debugPrint('Error getting initial auth headers for batch trash: $e');
+    }
+
+    if (headers == null) {
+      debugPrint('Cannot batch-trash Gmail messages: no valid auth session for account $accountId.');
+      AppLogger.error(
+        'Bulk Trash Sync Failed',
+        'No valid auth session for account ${accountId ?? "default"}',
+        category: LogCategory.triage,
+      );
+      return 0;
+    }
+
+    Future<bool>? activeRefresh;
+    Future<bool> attemptRefreshToken() {
+      if (activeRefresh != null) return activeRefresh!;
+      activeRefresh = () async {
+        try {
+          if (headers != null && headers!['Authorization'] != null) {
+            final old = headers!['Authorization']!;
+            final raw = old.startsWith('Bearer ') ? old.substring(7) : old;
+            try {
+              await GoogleSignInPlatform.instance.clearAuthCache(token: raw);
+            } catch (_) {}
+          }
+          if (accountId != null) {
+            await _storage.delete(key: _tokenKey(accountId));
+            await _storage.delete(key: _tokenTimeKey(accountId));
+          }
+          final refreshed = await getAuthHeadersForAccount(accountId) ?? await _getValidAuthHeaders();
+          if (refreshed != null) {
+            headers = refreshed;
+            debugPrint('Successfully refreshed auth token during batch trash.');
+            AppLogger.info(
+              'Bulk Trash Token Refreshed',
+              'Auto-refreshed expired session token for account ${accountId ?? "default"}',
+              category: LogCategory.triage,
+            );
+            return true;
+          }
+        } catch (refreshErr) {
+          debugPrint('Failed to refresh token during batch trash: $refreshErr');
+        } finally {
+          activeRefresh = null;
+        }
+        return false;
+      }();
+      return activeRefresh!;
+    }
 
     int successCount = 0;
-    const chunkSize = 5;
+    const chunkSize = 10;
+    bool hasAuthFailed = false;
+
     for (int i = 0; i < remoteMessageIds.length; i += chunkSize) {
+      if (hasAuthFailed) break;
+
       final chunk = remoteMessageIds.sublist(
         i,
         i + chunkSize > remoteMessageIds.length ? remoteMessageIds.length : i + chunkSize,
       );
+
+      final chunkSuccessIds = <String>[];
+
       await Future.wait(chunk.map((remoteId) async {
         try {
           final res = await _dio.post(
             'https://gmail.googleapis.com/gmail/v1/users/me/messages/$remoteId/trash',
             options: Options(headers: headers),
           );
-          if (res.statusCode == 200) successCount++;
+          if (res.statusCode == 200) {
+            chunkSuccessIds.add(remoteId);
+          }
         } catch (e) {
+          if (e is DioException && e.response?.statusCode == 401) {
+            debugPrint('401 during batch-trash of $remoteId. Attempting automatic recovery...');
+            final refreshed = await attemptRefreshToken();
+            if (refreshed) {
+              try {
+                final retryRes = await _dio.post(
+                  'https://gmail.googleapis.com/gmail/v1/users/me/messages/$remoteId/trash',
+                  options: Options(headers: headers),
+                );
+                if (retryRes.statusCode == 200) {
+                  chunkSuccessIds.add(remoteId);
+                  return;
+                }
+              } catch (retryErr) {
+                debugPrint('Retry after token refresh failed for $remoteId: $retryErr');
+              }
+            } else {
+              hasAuthFailed = true;
+            }
+          } else if (e is DioException && (e.response?.statusCode == 429 || e.response?.statusCode == 403)) {
+            debugPrint('Rate limited (status ${e.response?.statusCode}) during batch-trash of $remoteId. Waiting 1s before retry...');
+            await Future.delayed(const Duration(milliseconds: 1000));
+            try {
+              final retryRes = await _dio.post(
+                'https://gmail.googleapis.com/gmail/v1/users/me/messages/$remoteId/trash',
+                options: Options(headers: headers),
+              );
+              if (retryRes.statusCode == 200) {
+                chunkSuccessIds.add(remoteId);
+                return;
+              }
+            } catch (_) {}
+          }
           debugPrint('Error batch-trashing message $remoteId: $e');
         }
       }));
+
+      if (chunkSuccessIds.isNotEmpty) {
+        successCount += chunkSuccessIds.length;
+        if (onChunkSuccess != null) {
+          try {
+            await onChunkSuccess(chunkSuccessIds);
+          } catch (e) {
+            debugPrint('Error in onChunkSuccess callback: $e');
+          }
+        }
+      }
+
+      onProgress?.call(successCount, remoteMessageIds.length);
+
+      // Pacing pause between chunks to respect Gmail rate limits
+      if (i + chunkSize < remoteMessageIds.length) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
     }
-    AppLogger.success('Bulk Trash Sync', 'Batch-trashed $successCount of ${remoteMessageIds.length} emails in Gmail', category: LogCategory.triage);
+
+    if (successCount == remoteMessageIds.length) {
+      AppLogger.success(
+        'Bulk Trash Sync',
+        'Batch-trashed $successCount of ${remoteMessageIds.length} emails in Gmail',
+        category: LogCategory.triage,
+      );
+    } else if (successCount > 0) {
+      AppLogger.warning(
+        'Bulk Trash Sync Partial',
+        'Batch-trashed $successCount of ${remoteMessageIds.length} emails in Gmail (${remoteMessageIds.length - successCount} failed)',
+        category: LogCategory.triage,
+      );
+    } else {
+      AppLogger.error(
+        'Bulk Trash Sync Failed',
+        'Failed to trash any emails in Gmail (0 of ${remoteMessageIds.length} trashed)',
+        category: LogCategory.triage,
+      );
+    }
+
     return successCount;
   }
 
@@ -1484,6 +1620,7 @@ class GoogleAuthService {
     final labelIds = (detailData['labelIds'] as List<dynamic>? ?? []).map((e) => e.toString()).toSet();
     final isRead = !labelIds.contains('UNREAD');
     final isInbox = labelIds.contains('INBOX');
+    final isStarred = labelIds.contains('STARRED');
 
     // Deterministic ID ensures duplicate imports never create duplicate records
     final deterministicId = '${accountId}_$messageId';
@@ -1503,6 +1640,7 @@ class GoogleAuthService {
       unsubscribeMailto: unsubLinks.mailto,
       isRead: isRead,
       isArchived: !isInbox,
+      isStarred: isStarred,
       receivedAt: receivedDate,
     );
   }

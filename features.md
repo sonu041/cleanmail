@@ -12,6 +12,7 @@ This guide walks you through every feature available in the application, how to 
    - [Swipe to Delete](#swipe-to-delete)
    - [Undo Protection](#undo-protection)
    - [Unread Indicator Dot](#unread-indicator-dot)
+   - [Starring & Starred Messages (Two-Way Gmail Sync)](#starring--starred-messages-two-way-gmail-sync)
    - [Email Locking & Protection](#email-locking--protection)
    - [Category Tags & Sender Preferences](#category-tags--sender-preferences)
    - [Multi-Select & Batch Actions](#multi-select--batch-actions)
@@ -21,12 +22,14 @@ This guide walks you through every feature available in the application, how to 
    - [Sliding Filter Bar](#sliding-filter-bar)
    - [Switching Mailboxes](#switching-mailboxes)
    - [Unread Only Filter](#unread-only-filter)
+   - [Starred Only Filter](#starred-only-filter)
    - [Category Filters](#category-filters)
 3. [Reading an Email](#3-reading-an-email)
    - [Pure-Text Reader](#pure-text-reader)
    - [Sender & Date Details](#sender--date-details)
    - [View All Mails from this Sender](#view-all-mails-from-this-sender)
    - [One-Tap Unsubscribe](#one-tap-unsubscribe)
+   - [Star or Unstar from Reader](#star-or-unstar-from-reader)
    - [Lock or Delete from Reader](#lock-or-delete-from-reader)
 4. [Sender Sweep (Inbox Decluttering)](#4-sender-sweep-inbox-decluttering)
    - [Navigating to Sender Sweep](#navigating-to-sender-sweep)
@@ -71,6 +74,12 @@ The Inbox is your central command feed where messages from all your connected ac
 - Unread emails feature a distinct **green dot** next to the sender's name.
 - Once you tap an email to read it, the green dot disappears.
 
+### Starring & Starred Messages (Two-Way Gmail Sync)
+- **Automatic Sync with Gmail**: Any messages you star in Gmail (on web or mobile) are automatically tracked and displayed as starred in CleanMail with a golden star icon.
+- **One-Tap Star from the Inbox**: Tap the star icon next to the timestamp on any email tile to immediately star or unstar it.
+- **Two-Way Synchronization**: When you star or unstar an email in CleanMail, the change is automatically sent back to your Gmail account in real time so both inboxes stay perfectly in sync.
+- **Batch Star / Unstar**: In multi-select mode, tap the star icon in the top selection bar to star or unstar all selected messages together in one tap.
+
 ### Email Locking & Protection
 Need to protect an important message like a tax receipt, flight ticket, or password reset?
 - **Visual Lock Badge**: Locked emails prominently display a golden **Locked** tag with a lock icon.
@@ -92,6 +101,7 @@ You can select multiple emails at once to triage them together:
   - **Cancel (X)**: Exits selection mode.
   - **Counter**: Shows how many emails are currently selected.
   - **Select All / Deselect All**: Tap the checklist icon to select every email in your current view in one tap.
+  - **Star / Unstar Selected**: Toggle star status for all selected emails simultaneously with automatic Gmail sync.
   - **Lock / Unlock Selected**: Toggle protection for all selected emails simultaneously.
   - **Delete Selected**: Deletes all selected emails (with instant Undo protection). If any locked emails are included, CleanMail safely preserves them.
 
@@ -123,6 +133,10 @@ Keep your screen spacious with CleanMail's collapsible filter drawer.
 - In the filter section, tap the **Unread** button (showing how many unread emails you have).
 - The inbox instantly filters to display only emails that haven't been opened yet. Tap again to return to all messages.
 
+### Starred Only Filter
+- In the filter section, tap the **Starred** button (showing how many starred emails you have).
+- The inbox instantly isolates and displays only your starred messages. Tap again to return to all messages.
+
 ### Category Filters
 - Tap on any category pill (**Personal**, **Newsletters**, **Transactions**, or **Updates**) to view only messages belonging to that category. Tap the active chip again or tap **All** to clear the category filter.
 
@@ -150,6 +164,10 @@ Want to review every email you've ever received from this person, company, or ne
 ### One-Tap Unsubscribe
 - If CleanMail detects that an email is a mailing list or newsletter, a clean **Unsubscribe** banner appears at the top.
 - Tap **Unsubscribe** to open the official unsubscribe link directly.
+
+### Star or Unstar from Reader
+- **Star / Unstar Toggle**: Tap the **Star icon** in the top navigation bar while reading any email.
+- Tapping immediately toggles the email's starred status and synchronizes it with your Gmail account.
 
 ### Lock or Delete from Reader
 - **Lock / Unlock**: Tap the **Lock icon** in the top navigation bar to protect or unprotect this specific email.
@@ -179,9 +197,12 @@ CleanMail's **Sender Sweep** is the easiest way to purge noisy senders and promo
 - Tap the **Set Tag** button on any sender's card to quickly define how their future messages should be labeled and whether they should be auto-locked.
 
 ### Deleting All from a Sender
-- Tap the red **Delete All** button on a sender card.
-- A confirmation dialog appears showing how many emails will be removed.
-- **Locked Emails are Protected**: Any emails from this sender that you locked will **not** be deleted.
+- Tap the red **Delete All** button on a sender card (or from the top right of the sender's individual email list).
+- **Confirmation Safety**: A confirmation dialog reminds you that locked emails will remain protected.
+- **Live Progress Dialog**: CleanMail displays an active progress bar showing the exact count being deleted in real time (e.g. *"Deleting 45 of 156 emails..."*).
+- **Server Confirmation Guarantee**: CleanMail deletes emails in safe batches and only removes an email from your screen after your email server confirms it has been moved to Trash. If your network connection is interrupted or the server cannot delete certain messages, they stay visible in your list so you never lose track of them.
+- **Automatic Session Renewal**: If your email account session expired while the app was idle, CleanMail automatically refreshes your login credentials in the background and completes the batch deletion without interrupting you.
+- **Locked Emails are Protected**: Any emails from this sender that you locked are safely preserved and will **not** be deleted.
 
 ---
 
@@ -264,13 +285,21 @@ Keep track of how cleanly and efficiently you are handling your email with the b
 - **Warning & Error Retention**: Important warnings and error alerts are always preserved and never discarded by auto-purge, ensuring you never lose diagnostic history if an issue occurs.
 - **Search & Filters**: Filter by category (Sync, Triage, Auth, System), search by keywords, copy all logs to your clipboard, or clear the log manually at any time.
 
-### Managing Sender Rules
-- Under **Sender Preferred Tags & Rules**, view all active sender preferences.
-- See which senders have custom categories or auto-lock enabled. Tap the delete icon to remove any rule.
+### Managing Sender Rules & Preferred Tags
+CleanMail provides a dedicated screen to manage all your automated sender tagging and auto-locking preferences:
+- **How to Open**: Tap the **Settings (gear)** icon $\rightarrow$ look under **Sender Preferred Tags** $\rightarrow$ tap **Manage Sender Preferred Tags**.
+- **Search Senders & Tags**: Use the instant search bar at the top to quickly find any sender email, category, or custom label even if you have dozens or hundreds of rules.
+- **Rule Details at a Glance**: Each sender card shows their email address, preferred category tag (e.g. *Personal*, *Newsletters*), custom label (e.g. *Family*, *Receipts*), and whether incoming emails are auto-locked.
+- **Add New Rule**: Tap the **+ Add Rule** button (at the top right or bottom floating button) to add a preferred category rule for any sender email address directly.
+- **Edit or Remove**: Tap the edit pencil icon to modify the category, custom tag, or auto-lock setting, or tap the trash icon to remove a rule.
 
 ### Cleaning Duplicate Emails
 - Tap **Clean Up Duplicate Emails Across Mailboxes** to instantly scan and remove any duplicate cross-account entries.
 
 ---
+
+### 👨‍💻 Developer & Craftsmanship
+- **Developer**: **Shuvankar Sarkar**
+- **Craftsmanship**: **Vibe Coded using Gemini & Antigravity**
 
 *Thank you for using CleanMail! Enjoy your clean, quiet, and fast inbox.*

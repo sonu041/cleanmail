@@ -6,10 +6,10 @@ import '../../../../core/services/google_auth_service.dart';
 import '../../../../core/services/log_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../accounts/presentation/screens/accounts_screen.dart';
-import '../../../inbox/presentation/widgets/set_preferred_tag_dialog.dart';
 import '../../../providers.dart';
 import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 import 'logs_screen.dart';
+import 'sender_rules_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -398,7 +398,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
 
-          _buildSenderRulesCard(context, ref, isNerd),
+          _buildSenderRulesNavigationCard(context, ref, isNerd),
 
           const SizedBox(height: 24),
 
@@ -454,13 +454,13 @@ class SettingsScreen extends ConsumerWidget {
 
           const SizedBox(height: 24),
 
-          // Footer
+          // Footer & Developer Credits
           Center(
             child: Column(
               children: [
                 Text(
                   isNerd
-                      ? '> CleanMail [Version 1.0.0+1] // Build: PROD'
+                      ? '> CleanMail [v1.0.0+1] // Build: PROD'
                       : '${AppConstants.appName} • ${AppConstants.appTagline}',
                   style: TextStyle(
                     fontSize: 12,
@@ -471,17 +471,81 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Distraction-Free Text Mail Client',
+                  isNerd
+                      ? '// Distraction-Free Pure Text Mail Client'
+                      : 'Distraction-Free Pure Text Mail Client',
                   style: TextStyle(
                     fontSize: 11,
                     color: AppTheme.textSecondary(context).withOpacity(0.7),
                     fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
                   ),
                 ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isNerd
+                        ? AppTheme.nerdPrimary.withOpacity(0.08)
+                        : (Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white.withOpacity(0.05)
+                            : Colors.black.withOpacity(0.03)),
+                    borderRadius: BorderRadius.circular(isNerd ? 4 : 12),
+                    border: Border.all(
+                      color: isNerd
+                          ? AppTheme.nerdPrimary.withOpacity(0.2)
+                          : AppTheme.border(context).withOpacity(0.4),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.code_rounded,
+                            size: 14,
+                            color: isNerd ? AppTheme.nerdPrimary : Theme.of(context).primaryColor,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            isNerd ? 'AUTHOR: Shuvankar Sarkar' : 'Developed by Shuvankar Sarkar',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isNerd ? AppTheme.nerdPrimary : AppTheme.textPrimary(context),
+                              fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.auto_awesome,
+                            size: 12,
+                            color: isNerd ? AppTheme.nerdAccentCyan : Colors.deepPurple.shade400,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Vibe Coded using Gemini & Antigravity',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: isNerd ? AppTheme.nerdAccentCyan : AppTheme.textSecondary(context),
+                              fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -669,123 +733,52 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSenderRulesCard(BuildContext context, WidgetRef ref, bool isNerd) {
+  Widget _buildSenderRulesNavigationCard(BuildContext context, WidgetRef ref, bool isNerd) {
     final rulesAsync = ref.watch(senderRulesStreamProvider);
+    final count = rulesAsync.asData?.value.length ?? 0;
 
-    return rulesAsync.when(
-      data: (rules) {
-        if (rules.isEmpty) {
-          return Card(
-            shape: RoundedRectangleBorder(
-              side: BorderSide(color: AppTheme.border(context)),
-              borderRadius: BorderRadius.circular(isNerd ? 4 : 10),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  Icon(Icons.label_outline, size: 20, color: AppTheme.textSecondary(context)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'No sender tag rules yet. Tap the tag chip on any email or in Sender Sweep to set preferred tags.',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: AppTheme.textSecondary(context),
-                        fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+    return Card(
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: AppTheme.border(context)),
+        borderRadius: BorderRadius.circular(isNerd ? 4 : 10),
+      ),
+      child: ListTile(
+        key: const ValueKey('manage_sender_rules_tile'),
+        leading: CircleAvatar(
+          backgroundColor: isNerd ? const Color(0xFF003311) : const Color(0xFFE8F5E9),
+          child: Icon(
+            Icons.label_outlined,
+            color: isNerd ? AppTheme.nerdPrimary : Colors.green.shade700,
+          ),
+        ),
+        title: Text(
+          isNerd ? 'MANAGE_SENDER_TAG_RULES' : 'Manage Sender Preferred Tags',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 14.5,
+            fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+          ),
+        ),
+        subtitle: Text(
+          count == 0
+              ? (isNerd ? '// No sender rules configured' : 'No rules configured yet (tap to add)')
+              : (isNerd
+                  ? '$count rule(s) configured • Auto-tagging active'
+                  : '$count sender rule${count == 1 ? "" : "s"} configured'),
+          style: TextStyle(
+            fontSize: 12,
+            color: AppTheme.textSecondary(context),
+            fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+          ),
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SenderRulesScreen()),
           );
-        }
-
-        return Card(
-          shape: RoundedRectangleBorder(
-            side: BorderSide(color: AppTheme.border(context)),
-            borderRadius: BorderRadius.circular(isNerd ? 4 : 10),
-          ),
-          child: Column(
-            children: [
-              ...rules.map((rule) {
-                return ListTile(
-                  dense: true,
-                  leading: CircleAvatar(
-                    radius: 14,
-                    backgroundColor: AppTheme.lightPrimary.withOpacity(0.12),
-                    child: const Icon(Icons.label_outlined, size: 14, color: AppTheme.lightPrimary),
-                  ),
-                  title: Text(
-                    rule.senderEmail,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
-                    ),
-                  ),
-                  subtitle: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                        decoration: BoxDecoration(
-                          color: AppTheme.lightPrimary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          rule.customTag != null
-                              ? '${rule.preferredCategory.label} • ${rule.customTag}'
-                              : rule.preferredCategory.label,
-                          style: const TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.lightPrimary,
-                          ),
-                        ),
-                      ),
-                      if (rule.isAutoLocked) ...[
-                        const SizedBox(width: 6),
-                        const Icon(Icons.lock, size: 12, color: Colors.amber),
-                        const SizedBox(width: 2),
-                        const Text(
-                          'Auto-Lock',
-                          style: TextStyle(fontSize: 10.5, color: Colors.amber, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ],
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        tooltip: 'Edit rule',
-                        onPressed: () {
-                          showSetPreferredTagDialog(
-                            context: context,
-                            ref: ref,
-                            senderEmail: rule.senderEmail,
-                            currentCategory: rule.preferredCategory,
-                            currentCustomTag: rule.customTag,
-                          );
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.deleteColor),
-                        tooltip: 'Delete rule',
-                        onPressed: () => ref.read(messageRepositoryProvider).deleteSenderRule(rule.senderEmail),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ],
-          ),
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Text('Error loading rules: $e'),
+        },
+      ),
     );
   }
 }

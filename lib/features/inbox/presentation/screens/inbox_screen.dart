@@ -86,11 +86,14 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
     final categoryCounts = ref.watch(messageCountsByCategoryProvider).asData?.value ?? {};
     final unreadCount = ref.watch(unreadCountProvider).asData?.value ?? 0;
     final isUnreadOnly = ref.watch(unreadOnlyFilterProvider);
+    final starredCount = ref.watch(starredCountProvider).asData?.value ?? 0;
+    final isStarredOnly = ref.watch(starredOnlyFilterProvider);
 
     // Filter active status
     final hasActiveFilter = selectedAccountId != null ||
         selectedCategory != MailCategory.all ||
-        isUnreadOnly;
+        isUnreadOnly ||
+        isStarredOnly;
 
     // Find active account email or title
     String activeTitle = 'All Inboxes';
@@ -162,7 +165,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
                           accountCounts,
                         ),
 
-                        // Category Pills with Unread Filter
+                        // Category Pills with Unread & Starred Filters
                         _buildCategoryBar(
                           context,
                           ref,
@@ -170,6 +173,8 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
                           categoryCounts,
                           unreadCount,
                           isUnreadOnly,
+                          starredCount,
+                          isStarredOnly,
                         ),
                       ],
                     ),
@@ -205,6 +210,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
                           accounts,
                           selectedAccountId,
                           isUnreadOnly,
+                          isStarredOnly,
                         ),
                       ),
                     )
@@ -407,6 +413,16 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
           },
         ),
 
+        // Star / Unstar Selected
+        IconButton(
+          key: const ValueKey('star_toggle_selected_btn'),
+          icon: const Icon(Icons.star_outline_rounded),
+          tooltip: 'Star / Unstar selected',
+          onPressed: selectedIds.isEmpty
+              ? null
+              : () => _handleToggleStarSelected(context, ref, selectedIds, messages),
+        ),
+
         // Lock / Unlock Selected
         IconButton(
           key: const ValueKey('lock_toggle_selected_btn'),
@@ -433,6 +449,34 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
         ),
       ],
     );
+  }
+
+  Future<void> _handleToggleStarSelected(
+    BuildContext context,
+    WidgetRef ref,
+    Set<String> selectedIds,
+    List<MailMessage> messages,
+  ) async {
+    final selectedMsgs = messages.where((m) => selectedIds.contains(m.id)).toList();
+    if (selectedMsgs.isEmpty) return;
+
+    final anyUnstarred = selectedMsgs.any((m) => !m.isStarred);
+    final targetStarred = anyUnstarred;
+
+    final repo = ref.read(messageRepositoryProvider);
+    for (final msg in selectedMsgs) {
+      await repo.setStarred(msg.id, targetStarred);
+    }
+
+    if (context.mounted) {
+      SnackBarUtils.showAutoHideSnackBar(
+        messenger: ScaffoldMessenger.of(context),
+        message: targetStarred
+            ? 'Starred ${selectedMsgs.length} email(s)'
+            : 'Unstarred ${selectedMsgs.length} email(s)',
+        duration: const Duration(seconds: 3),
+      );
+    }
   }
 
   Future<void> _handleToggleLockSelected(
@@ -642,6 +686,8 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
     Map<String, int> categoryCounts,
     int unreadCount,
     bool isUnreadOnly,
+    int starredCount,
+    bool isStarredOnly,
   ) {
     final allCategoryCount = categoryCounts.values.fold(0, (sum, c) => sum + c);
     final isNerd = AppTheme.isNerd(context);
@@ -693,8 +739,36 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
               ref.read(unreadOnlyFilterProvider.notifier).state = selected;
             },
           ),
+          const SizedBox(width: 6),
+
+          // Starred Filter Button
+          FilterChip(
+            key: const ValueKey('starred_filter_btn'),
+            avatar: Icon(
+              isStarredOnly ? Icons.star_rounded : Icons.star_border_rounded,
+              size: 16,
+              color: isStarredOnly
+                  ? (isNerd ? AppTheme.nerdAccentYellow : Colors.amber.shade700)
+                  : (isDark ? Colors.white60 : Colors.black45),
+            ),
+            label: Text(
+              isNerd ? 'STARRED [$starredCount]' : 'Starred ($starredCount)',
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily(context),
+                fontWeight: isStarredOnly ? FontWeight.bold : FontWeight.w600,
+                color: isStarredOnly
+                    ? (isNerd ? AppTheme.nerdAccentYellow : Colors.amber.shade800)
+                    : null,
+              ),
+            ),
+            selected: isStarredOnly,
+            showCheckmark: false,
+            onSelected: (selected) {
+              ref.read(starredOnlyFilterProvider.notifier).state = selected;
+            },
+          ),
           const SizedBox(width: 4),
-          // Subtle vertical divider between Unread filter and Categories
+          // Subtle vertical divider between Quick filters and Categories
           Container(
             height: 20,
             width: 1,
@@ -737,9 +811,56 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
     List<MailAccount> accounts,
     String? selectedAccountId,
     bool isUnreadOnly,
+    bool isStarredOnly,
   ) {
     final hasGmailAccounts = accounts.any((a) => a.provider == MailProvider.gmail);
     final isNerd = AppTheme.isNerd(context);
+
+    if (isStarredOnly) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.star_outline_rounded,
+              size: 64,
+              color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              isNerd ? '> ZERO_STARRED' : 'No Starred Emails',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                fontFamily: AppTheme.fontFamily(context),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              isNerd
+                  ? '// No starred messages in this view'
+                  : 'Star important emails to quickly find them here.',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                fontFamily: AppTheme.fontFamily(context),
+              ),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () {
+                ref.read(starredOnlyFilterProvider.notifier).state = false;
+              },
+              icon: const Icon(Icons.star, size: 18),
+              label: Text(
+                isNerd ? '> SHOW_ALL_EMAILS' : 'Show All Emails',
+                style: TextStyle(fontFamily: AppTheme.fontFamily(context)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     if (isUnreadOnly) {
       return Center(

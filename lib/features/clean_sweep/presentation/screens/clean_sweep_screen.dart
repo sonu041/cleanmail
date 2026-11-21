@@ -286,40 +286,132 @@ class CleanSweepScreen extends ConsumerWidget {
                       visualDensity: VisualDensity.compact,
                     ),
                     onPressed: () async {
+                      final displayName = summary.senderName.isNotEmpty
+                          ? summary.senderName
+                          : summary.senderEmail;
                       final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: Text('Delete all from ${summary.senderName}?'),
-                        content: Text(
-                          'This will delete messages from ${summary.senderEmail}.\n\nNote: Locked emails are protected and will NOT be deleted.',
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: Text('Delete all from $displayName?'),
+                          content: Text(
+                            'This will delete messages from ${summary.senderEmail}.\n\nNote: Locked emails are protected and will NOT be deleted.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              style: FilledButton.styleFrom(backgroundColor: AppTheme.deleteColor),
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Delete All'),
+                            ),
+                          ],
                         ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('Cancel'),
-                          ),
-                          FilledButton(
-                            style: FilledButton.styleFrom(backgroundColor: AppTheme.deleteColor),
-                            onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('Delete All'),
-                          ),
-                        ],
-                      ),
-                    );
+                      );
 
-                    if (confirmed == true) {
-                      final count = await ref
-                          .read(messageRepositoryProvider)
-                          .deleteAllFromSender(summary.senderEmail);
-                      if (context.mounted) {
-                        SnackBarUtils.showAutoHideSnackBar(
-                          messenger: ScaffoldMessenger.of(context),
-                          message: 'Deleted $count emails from ${summary.senderName}',
-                          duration: const Duration(seconds: 5),
+                      if (confirmed == true && context.mounted) {
+                        final progressNotifier = ValueNotifier<({int current, int total})>(
+                          (current: 0, total: summary.totalCount),
                         );
+
+                        // Show modal progress dialog
+                        showDialog<void>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (dialogCtx) => PopScope(
+                            canPop: false,
+                            child: ValueListenableBuilder<({int current, int total})>(
+                              valueListenable: progressNotifier,
+                              builder: (ctx, prog, _) {
+                                final pct = prog.total > 0
+                                    ? (prog.current / prog.total).clamp(0.0, 1.0)
+                                    : null;
+                                return AlertDialog(
+                                  title: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          value: pct,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      const Expanded(
+                                        child: Text(
+                                          'Deleting Emails...',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        prog.total > 0
+                                            ? 'Deleting ${prog.current} of ${prog.total} emails from $displayName...'
+                                            : 'Deleting emails from $displayName...',
+                                        style: const TextStyle(fontSize: 13),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      LinearProgressIndicator(
+                                        value: pct,
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        );
+
+                        int count = 0;
+                        try {
+                          count = await ref
+                              .read(messageRepositoryProvider)
+                              .deleteAllFromSender(
+                                summary.senderEmail,
+                                onProgress: (current, total) {
+                                  progressNotifier.value = (current: current, total: total);
+                                },
+                              );
+                        } finally {
+                          if (context.mounted) {
+                            Navigator.of(context, rootNavigator: true).pop();
+                          }
+                          progressNotifier.dispose();
+                        }
+
+                        if (context.mounted) {
+                          if (count > 0 && count >= summary.totalCount) {
+                            SnackBarUtils.showAutoHideSnackBar(
+                              messenger: ScaffoldMessenger.of(context),
+                              message: 'Successfully deleted $count emails from $displayName',
+                              duration: const Duration(seconds: 5),
+                            );
+                          } else if (count > 0) {
+                            SnackBarUtils.showAutoHideSnackBar(
+                              messenger: ScaffoldMessenger.of(context),
+                              message: 'Deleted $count of ${summary.totalCount} emails from $displayName. Some emails could not be deleted from server.',
+                              duration: const Duration(seconds: 5),
+                            );
+                          } else {
+                            SnackBarUtils.showAutoHideSnackBar(
+                              messenger: ScaffoldMessenger.of(context),
+                              message: 'Failed to delete emails from $displayName. Server rejected delete or token expired.',
+                              duration: const Duration(seconds: 5),
+                            );
+                          }
+                        }
                       }
-                    }
-                  },
+                    },
                 ),
               ],
             ),

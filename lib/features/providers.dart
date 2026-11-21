@@ -133,12 +133,26 @@ final messageCountsByCategoryProvider = StreamProvider<Map<String, int>>((ref) {
 // Selected unread-only filter (default = false)
 final unreadOnlyFilterProvider = StateProvider<bool>((ref) => false);
 
+// Selected starred-only filter (default = false)
+final starredOnlyFilterProvider = StateProvider<bool>((ref) => false);
+
 // Reactive unread count for the current account and category
 final unreadCountProvider = StreamProvider<int>((ref) {
   final repo = ref.watch(messageRepositoryProvider);
   final accountId = ref.watch(selectedAccountIdProvider);
   final category = ref.watch(selectedCategoryProvider);
   return repo.watchUnreadCount(
+    accountId: accountId,
+    category: category == MailCategory.all ? null : category.name,
+  );
+});
+
+// Reactive starred count for the current account and category
+final starredCountProvider = StreamProvider<int>((ref) {
+  final repo = ref.watch(messageRepositoryProvider);
+  final accountId = ref.watch(selectedAccountIdProvider);
+  final category = ref.watch(selectedCategoryProvider);
+  return repo.watchStarredCount(
     accountId: accountId,
     category: category == MailCategory.all ? null : category.name,
   );
@@ -179,12 +193,16 @@ final filteredMessagesProvider = Provider<List<MailMessage>>((ref) {
   final messagesAsync = ref.watch(inboxMessagesStreamProvider);
   final query = ref.watch(searchQueryProvider).trim().toLowerCase();
   final unreadOnly = ref.watch(unreadOnlyFilterProvider);
+  final starredOnly = ref.watch(starredOnlyFilterProvider);
 
   return messagesAsync.maybeWhen(
     data: (messages) {
       var result = messages;
       if (unreadOnly) {
         result = result.where((m) => !m.isRead).toList();
+      }
+      if (starredOnly) {
+        result = result.where((m) => m.isStarred).toList();
       }
       if (query.isNotEmpty) {
         result = result.where((m) {

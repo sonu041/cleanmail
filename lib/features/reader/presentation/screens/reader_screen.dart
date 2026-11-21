@@ -122,6 +122,30 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               _loadMessage();
             },
           ),
+          // Star / Unstar toggle
+          IconButton(
+            key: const ValueKey('reader_star_btn'),
+            icon: Icon(msg.isStarred ? Icons.star_rounded : Icons.star_outline_rounded),
+            color: msg.isStarred
+                ? (isNerd ? AppTheme.nerdAccentYellow : Colors.amber.shade600)
+                : null,
+            tooltip: msg.isStarred ? 'Unstar email' : 'Star email',
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              final newStarred = !msg.isStarred;
+              await ref.read(messageRepositoryProvider).setStarred(msg.id, newStarred);
+              if (mounted) {
+                setState(() {
+                  _message = msg.copyWith(isStarred: newStarred);
+                });
+                SnackBarUtils.showAutoHideSnackBar(
+                  messenger: messenger,
+                  message: newStarred ? 'Starred email' : 'Unstarred email',
+                  duration: const Duration(seconds: 2),
+                );
+              }
+            },
+          ),
           // Lock / Unlock toggle
           IconButton(
             key: const ValueKey('reader_lock_btn'),

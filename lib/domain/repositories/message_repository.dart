@@ -38,7 +38,10 @@ abstract class MessageRepository {
   Stream<List<SenderSummary>> watchSenderSummaries({String? accountId});
   Stream<List<MailMessage>> watchMessagesBySender(String senderEmail);
   Future<int> archiveAllFromSender(String senderEmail);
-  Future<int> deleteAllFromSender(String senderEmail);
+  Future<int> deleteAllFromSender(
+    String senderEmail, {
+    void Function(int current, int total)? onProgress,
+  });
 
   // Preferred Tags & Sender Rules
   Future<void> setSenderRule(SenderRule rule, {bool applyToExisting = true});

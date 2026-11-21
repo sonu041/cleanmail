@@ -23,6 +23,10 @@ class FakeGoogleAuthService extends GoogleAuthService {
   final List<String> unreadMarkedRemoteIds = [];
   final List<String> archivedRemoteIds = [];
   final List<String?> archivedAccountIds = [];
+  final List<String> starredRemoteIds = [];
+  final List<String> unstarredRemoteIds = [];
+  bool failBatchTrash = false;
+  List<String> Function(List<String> inputIds)? batchTrashFilter;
 
   @override
   Future<bool> trashGmailMessage({required String remoteMessageId, String? accountId}) async {
@@ -39,10 +43,27 @@ class FakeGoogleAuthService extends GoogleAuthService {
   }
 
   @override
-  Future<int> batchTrashGmailMessages({required List<String> remoteMessageIds, String? accountId}) async {
-    batchTrashedRemoteIds.addAll(remoteMessageIds);
+  Future<int> batchTrashGmailMessages({
+    required List<String> remoteMessageIds,
+    String? accountId,
+    void Function(int current, int total)? onProgress,
+    Future<void> Function(List<String> successfulRemoteIds)? onChunkSuccess,
+  }) async {
+    if (failBatchTrash) {
+      onProgress?.call(0, remoteMessageIds.length);
+      return 0;
+    }
+    final effectiveIds = batchTrashFilter != null
+        ? batchTrashFilter!(remoteMessageIds)
+        : remoteMessageIds;
+
+    batchTrashedRemoteIds.addAll(effectiveIds);
     batchTrashedAccountIds.add(accountId);
-    return remoteMessageIds.length;
+    if (effectiveIds.isNotEmpty) {
+      await onChunkSuccess?.call(effectiveIds);
+    }
+    onProgress?.call(effectiveIds.length, remoteMessageIds.length);
+    return effectiveIds.length;
   }
 
   @override
@@ -61,6 +82,16 @@ class FakeGoogleAuthService extends GoogleAuthService {
     if (isArchived) {
       archivedRemoteIds.add(remoteMessageId);
       archivedAccountIds.add(accountId);
+    }
+    return true;
+  }
+
+  @override
+  Future<bool> starGmailMessage({required String remoteMessageId, required bool isStarred, String? accountId}) async {
+    if (isStarred) {
+      starredRemoteIds.add(remoteMessageId);
+    } else {
+      unstarredRemoteIds.add(remoteMessageId);
     }
     return true;
   }
@@ -996,5 +1027,218 @@ void main() {
     expect(lastProgressStatus, contains('Syncing older emails'));
 
     await testDb.close();
+  });
+
+  group('Two-Way Star Sync & Starred Tracking Tests', () {
+    late AppDatabase testDb;
+    late FakeGoogleAuthService fakeAuth;
+    late MessageRepositoryImpl messageRepo;
+
+    setUp(() {
+      testDb = AppDatabase(NativeDatabase.memory());
+      fakeAuth = FakeGoogleAuthService();
+      messageRepo = MessageRepositoryImpl(testDb, fakeAuth);
+    });
+
+    tearDown(() async {
+      await testDb.close();
+    });
+
+    test('Toggling star updates local DB and syncs to Gmail', () async {
+      final msg = MailMessage(
+        id: 'acc1_star1',
+        accountId: 'acc1',
+        remoteMessageId: 'rem_star_1',
+        senderEmail: 'boss@corp.com',
+        senderName: 'The Boss',
+        subject: 'Important Q4 Strategy',
+        snippet: 'Please review',
+        plainTextBody: 'Please review',
+        category: MailCategory.personal,
+        isStarred: false,
+        receivedAt: DateTime.now(),
+      );
+      await messageRepo.saveMessages([msg]);
+
+      // Initially not starred
+      final initial = await messageRepo.getMessage('acc1_star1');
+      expect(initial?.isStarred, isFalse);
+
+      // Star the message
+      await messageRepo.setStarred('acc1_star1', true);
+
+      // Local DB is updated
+      final updated = await messageRepo.getMessage('acc1_star1');
+      expect(updated?.isStarred, isTrue);
+
+      // Remote sync was triggered
+      expect(fakeAuth.starredRemoteIds, contains('rem_star_1'));
+      expect(fakeAuth.unstarredRemoteIds, isEmpty);
+
+      // Unstar the message
+      await messageRepo.setStarred('acc1_star1', false);
+      final unstarred = await messageRepo.getMessage('acc1_star1');
+      expect(unstarred?.isStarred, isFalse);
+      expect(fakeAuth.unstarredRemoteIds, contains('rem_star_1'));
+    });
+
+    test('markMessageStarredByRemoteId updates message from delta sync', () async {
+      final msg = MailMessage(
+        id: 'acc1_star2',
+        accountId: 'acc1',
+        remoteMessageId: 'rem_star_2',
+        senderEmail: 'investor@fund.com',
+        senderName: 'Investor',
+        subject: 'Term Sheet',
+        snippet: 'Signed document',
+        plainTextBody: 'Signed document',
+        category: MailCategory.transactions,
+        isStarred: false,
+        receivedAt: DateTime.now(),
+      );
+      await messageRepo.saveMessages([msg]);
+
+      await messageRepo.markMessageStarredByRemoteId('rem_star_2', true);
+      final updated = await messageRepo.getMessage('acc1_star2');
+      expect(updated?.isStarred, isTrue);
+
+      await messageRepo.markMessageStarredByRemoteId('rem_star_2', false);
+      final reverted = await messageRepo.getMessage('acc1_star2');
+      expect(reverted?.isStarred, isFalse);
+    });
+
+    test('watchStarredCount accurately reflects active starred emails', () async {
+      final m1 = MailMessage(
+        id: 'acc1_m1',
+        accountId: 'acc1',
+        remoteMessageId: 'r1',
+        senderEmail: 'a@b.com',
+        senderName: 'A',
+        subject: 'Sub 1',
+        snippet: '',
+        plainTextBody: '',
+        category: MailCategory.personal,
+        isStarred: true,
+        receivedAt: DateTime.now(),
+      );
+      final m2 = MailMessage(
+        id: 'acc1_m2',
+        accountId: 'acc1',
+        remoteMessageId: 'r2',
+        senderEmail: 'b@b.com',
+        senderName: 'B',
+        subject: 'Sub 2',
+        snippet: '',
+        plainTextBody: '',
+        category: MailCategory.personal,
+        isStarred: false,
+        receivedAt: DateTime.now(),
+      );
+      await messageRepo.saveMessages([m1, m2]);
+
+      final count = await messageRepo.watchStarredCount(accountId: 'acc1').first;
+      expect(count, equals(1));
+
+      await messageRepo.setStarred('acc1_m2', true);
+      final countAfter = await messageRepo.watchStarredCount(accountId: 'acc1').first;
+      expect(countAfter, equals(2));
+    });
+
+    test('deleteAllFromSender preserves messages locally if remote batch trashing fails', () async {
+      fakeAuth.failBatchTrash = true;
+
+      final m1 = MailMessage(
+        id: 'fail_m1',
+        accountId: 'acc1',
+        remoteMessageId: 'rem_fail_1',
+        senderEmail: 'spammer@ad.com',
+        senderName: 'Spam Co',
+        subject: 'Deal 1',
+        snippet: '',
+        plainTextBody: '',
+        category: MailCategory.updates,
+        receivedAt: DateTime.now(),
+      );
+      final m2 = MailMessage(
+        id: 'fail_m2',
+        accountId: 'acc1',
+        remoteMessageId: 'rem_fail_2',
+        senderEmail: 'spammer@ad.com',
+        senderName: 'Spam Co',
+        subject: 'Deal 2',
+        snippet: '',
+        plainTextBody: '',
+        category: MailCategory.updates,
+        receivedAt: DateTime.now(),
+      );
+      await messageRepo.saveMessages([m1, m2]);
+
+      final progressUpdates = <({int current, int total})>[];
+      final deletedCount = await messageRepo.deleteAllFromSender(
+        'spammer@ad.com',
+        onProgress: (current, total) => progressUpdates.add((current: current, total: total)),
+      );
+
+      // Since remote trashing failed, 0 messages were deleted
+      expect(deletedCount, equals(0));
+
+      // Messages are safely preserved in local DB and NOT removed from the screen!
+      final preservedM1 = await messageRepo.getMessage('fail_m1');
+      final preservedM2 = await messageRepo.getMessage('fail_m2');
+      expect(preservedM1, isNotNull);
+      expect(preservedM2, isNotNull);
+
+      // Verify progress callback was triggered
+      expect(progressUpdates, isNotEmpty);
+      expect(progressUpdates.first.total, equals(2));
+
+      fakeAuth.failBatchTrash = false;
+    });
+
+    test('deleteAllFromSender only deletes confirmed remote-trashed messages when partial failure occurs', () async {
+      // Simulate partial failure: only rem_part_1 succeeds, rem_part_2 fails
+      fakeAuth.batchTrashFilter = (ids) => ids.where((id) => id == 'rem_part_1').toList();
+
+      final m1 = MailMessage(
+        id: 'part_m1',
+        accountId: 'acc1',
+        remoteMessageId: 'rem_part_1',
+        senderEmail: 'partial@sender.com',
+        senderName: 'Partial Sender',
+        subject: 'Part 1',
+        snippet: '',
+        plainTextBody: '',
+        category: MailCategory.updates,
+        receivedAt: DateTime.now(),
+      );
+      final m2 = MailMessage(
+        id: 'part_m2',
+        accountId: 'acc1',
+        remoteMessageId: 'rem_part_2',
+        senderEmail: 'partial@sender.com',
+        senderName: 'Partial Sender',
+        subject: 'Part 2',
+        snippet: '',
+        plainTextBody: '',
+        category: MailCategory.updates,
+        receivedAt: DateTime.now(),
+      );
+      await messageRepo.saveMessages([m1, m2]);
+
+      final deletedCount = await messageRepo.deleteAllFromSender('partial@sender.com');
+
+      // Exactly 1 message confirmed deleted
+      expect(deletedCount, equals(1));
+
+      // m1 (confirmed remote deleted) was removed from SQLite
+      final fetchedM1 = await messageRepo.getMessage('part_m1');
+      expect(fetchedM1, isNull);
+
+      // m2 (remote delete failed) is PRESERVED in SQLite!
+      final fetchedM2 = await messageRepo.getMessage('part_m2');
+      expect(fetchedM2, isNotNull);
+
+      fakeAuth.batchTrashFilter = null;
+    });
   });
 }

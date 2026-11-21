@@ -25,6 +25,20 @@ import 'package:cleanmail/features/settings/presentation/screens/settings_screen
 import 'package:cleanmail/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:cleanmail/core/theme/app_theme.dart';
 
+class _WidgetFakeGoogleAuthService extends GoogleAuthService {
+  @override
+  Future<int> batchTrashGmailMessages({
+    required List<String> remoteMessageIds,
+    String? accountId,
+    void Function(int current, int total)? onProgress,
+    Future<void> Function(List<String> successfulRemoteIds)? onChunkSuccess,
+  }) async {
+    await onChunkSuccess?.call(remoteMessageIds);
+    onProgress?.call(remoteMessageIds.length, remoteMessageIds.length);
+    return remoteMessageIds.length;
+  }
+}
+
 void main() {
   test('App constants are properly configured', () {
     expect(AppConstants.appName, equals('CleanMail'));
@@ -789,6 +803,80 @@ void main() {
     await testDb.close();
   });
 
+  testWidgets('CleanSweepScreen Delete All shows confirmation, progress dialog, and feedback',
+      (WidgetTester tester) async {
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final fakeGoogleAuth = _WidgetFakeGoogleAuthService();
+    final testMessageRepo = MessageRepositoryImpl(testDb, fakeGoogleAuth);
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+
+    await testAccountRepo.saveAccount(
+      const MailAccount(
+        id: 'acc1',
+        email: 'user@example.com',
+        displayName: 'User',
+        provider: MailProvider.gmail,
+        avatarColorValue: 0xFF2563EB,
+      ),
+    );
+
+    final msg = MailMessage(
+      id: 'sweep_del_1',
+      accountId: 'acc1',
+      remoteMessageId: 'remote_sdel1',
+      senderEmail: 'promo@store.com',
+      senderName: 'Promo Store',
+      subject: 'Flash Sale Today',
+      snippet: 'Big sale',
+      plainTextBody: 'Sale text',
+      category: MailCategory.updates,
+      isRead: false,
+      receivedAt: DateTime.now(),
+    );
+
+    await testMessageRepo.saveMessages([msg]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(testDb),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
+        ],
+        child: const MaterialApp(
+          home: CleanSweepScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Delete All'), findsOneWidget);
+    await tester.tap(find.text('Delete All'));
+    await tester.pumpAndSettle();
+
+    // Confirmation dialog
+    expect(find.text('Delete all from Promo Store?'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+
+    // Tap confirm 'Delete All' inside AlertDialog
+    final dialogDeleteBtn = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.widgetWithText(FilledButton, 'Delete All'),
+    );
+    await tester.tap(dialogDeleteBtn);
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    // Verify completion feedback
+    expect(find.text('Successfully deleted 1 emails from Promo Store'), findsOneWidget);
+
+    // Auto-hide snackbar timer flush
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+
+    await testDb.close();
+  });
+
   testWidgets('EmailTile visibly displays locked badge and blocks swipe-to-delete when locked',
       (WidgetTester tester) async {
     final testDb = AppDatabase(NativeDatabase.memory());
@@ -1548,17 +1636,16 @@ void main() {
 
   testWidgets('DashboardScreen renders without overflow on narrow width in Nerd theme',
       (WidgetTester tester) async {
-    final testDb = AppDatabase.forTesting(NativeDatabase.memory());
+    final testDb = AppDatabase(NativeDatabase.memory());
     final testAccountRepo = AccountRepositoryImpl(testDb);
-    final testMessageRepo = MessageRepositoryImpl(testDb);
+    final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
 
-    final account = MailAccount(
+    const account = MailAccount(
       id: 'acc_narrow_1',
       email: 'user@example.com',
       displayName: 'User',
-      provider: AccountProvider.gmail,
-      avatarColorValue: Colors.blue.value,
-      createdAt: DateTime.now(),
+      provider: MailProvider.gmail,
+      avatarColorValue: 0xFF2563EB,
     );
     await testAccountRepo.saveAccount(account);
     await testMessageRepo.saveMessages([

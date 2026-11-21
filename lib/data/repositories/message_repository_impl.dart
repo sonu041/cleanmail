@@ -402,44 +402,86 @@ class MessageRepositoryImpl implements MessageRepository {
   }
 
   @override
-  Future<int> deleteAllFromSender(String senderEmail) async {
-    // 1. Collect all non-locked remote IDs from this sender grouped by accountId
+  Future<int> deleteAllFromSender(
+    String senderEmail, {
+    void Function(int current, int total)? onProgress,
+  }) async {
+    // 1. Collect all non-locked messages from this sender
     final entries = await _db.getMessagesBySenderEmail(senderEmail);
+    final eligibleEntries = entries.where((e) => e.isLocked != true).toList();
+    if (eligibleEntries.isEmpty) {
+      onProgress?.call(0, 0);
+      return 0;
+    }
+
+    final totalCount = eligibleEntries.length;
+    onProgress?.call(0, totalCount);
+
+    // Group eligible entries by accountId and detect local-only messages
     final byAccount = <String, List<String>>{};
-    for (final e in entries) {
-      if (e.isLocked != true && e.remoteMessageId.isNotEmpty) {
+    final localOnlyIds = <String>[];
+
+    for (final e in eligibleEntries) {
+      if (e.remoteMessageId.isNotEmpty) {
         byAccount.putIfAbsent(e.accountId, () => []).add(e.remoteMessageId);
+      } else {
+        localOnlyIds.add(e.id);
       }
     }
 
-    // 2. Delete non-locked locally from SQLite
-    final count = await _db.deleteAllFromSender(senderEmail);
-    AppLogger.success(
-      'Sender Sweep Delete',
-      'Purged $count emails from $senderEmail across ${byAccount.length} mailboxes',
-      category: LogCategory.triage,
-      metadata: {'count': count, 'sender': senderEmail},
-    );
+    int totalDeleted = 0;
 
-    // Record delete metric per account
-    for (final entry in byAccount.entries) {
-      _db.recordMetricEvent(
-        eventType: 'delete',
-        count: entry.value.length,
-        accountId: entry.key,
-        details: 'Purged ${entry.value.length} emails from $senderEmail',
-      ).ignore();
+    // Delete local-only messages first (if any)
+    if (localOnlyIds.isNotEmpty) {
+      await _db.deleteMessages(localOnlyIds);
+      totalDeleted += localOnlyIds.length;
+      onProgress?.call(totalDeleted, totalCount);
     }
 
-    // 3. Two-way bulk delete: trash remote messages in Gmail for each account
+    // Process remote messages per account incrementally:
+    // Only delete from SQLite when remote trashing in Gmail is confirmed!
     for (final entry in byAccount.entries) {
-      _googleAuth.batchTrashGmailMessages(
-        remoteMessageIds: entry.value,
-        accountId: entry.key,
-      ).ignore();
+      final accountId = entry.key;
+      final remoteIds = entry.value;
+
+      final accountTrashed = await _googleAuth.batchTrashGmailMessages(
+        remoteMessageIds: remoteIds,
+        accountId: accountId,
+        onChunkSuccess: (chunkSuccessIds) async {
+          await _db.deleteMessagesByRemoteIds(chunkSuccessIds);
+          totalDeleted += chunkSuccessIds.length;
+          onProgress?.call(totalDeleted, totalCount);
+        },
+      );
+
+      // Record delete metric per account for confirmed deletions
+      if (accountTrashed > 0) {
+        _db.recordMetricEvent(
+          eventType: 'delete',
+          count: accountTrashed,
+          accountId: accountId,
+          details: 'Purged $accountTrashed emails from $senderEmail',
+        ).ignore();
+      }
     }
 
-    return count;
+    if (totalDeleted > 0) {
+      AppLogger.success(
+        'Sender Sweep Delete',
+        'Purged $totalDeleted of $totalCount emails from $senderEmail across ${byAccount.length} mailboxes',
+        category: LogCategory.triage,
+        metadata: {'deleted': totalDeleted, 'total': totalCount, 'sender': senderEmail},
+      );
+    } else {
+      AppLogger.error(
+        'Sender Sweep Delete Failed',
+        'Failed to delete any of $totalCount emails from $senderEmail on mail server',
+        category: LogCategory.triage,
+        metadata: {'sender': senderEmail, 'attempted': totalCount},
+      );
+    }
+
+    return totalDeleted;
   }
 
   MailMessage _mapToDomain(MessageEntry entry) {

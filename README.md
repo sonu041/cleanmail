@@ -195,7 +195,7 @@ CleanMail connects to Gmail using official Google OAuth 2.0.
    * **For Android**:
      * Application type: **Android**
      * Package name: `com.shuvankar.cleanmail`
-     * SHA-1 fingerprint: `09:C2:9D:D4:63:78:55:CB:81:E8:FC:34:84:88:C3:8C:BA:09:52:D2` (or via `cd android; .\gradlew signingReport`)
+     * SHA-1 fingerprint: `<YOUR_SHA1_FINGERPRINT>` (obtain via `cd android; .\gradlew signingReport`)
 
 ---
 

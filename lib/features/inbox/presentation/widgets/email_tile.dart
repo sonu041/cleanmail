@@ -207,6 +207,25 @@ class EmailTile extends ConsumerWidget {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            GestureDetector(
+                              key: ValueKey('email_star_btn_${message.id}'),
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () async {
+                                final newStarred = !message.isStarred;
+                                await ref.read(messageRepositoryProvider).setStarred(message.id, newStarred);
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 6, left: 4, top: 2, bottom: 2),
+                                child: Icon(
+                                  message.isStarred ? Icons.star_rounded : Icons.star_outline_rounded,
+                                  key: ValueKey('email_star_icon_${message.id}'),
+                                  size: 16,
+                                  color: message.isStarred
+                                      ? (isNerd ? AppTheme.nerdAccentYellow : Colors.amber.shade600)
+                                      : AppTheme.textSecondary(context).withOpacity(0.35),
+                                ),
+                              ),
+                            ),
                             if (message.isLocked) ...[
                               Icon(
                                 Icons.lock,
