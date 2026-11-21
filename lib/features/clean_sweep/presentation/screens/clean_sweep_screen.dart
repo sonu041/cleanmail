@@ -44,7 +44,8 @@ class CleanSweepScreen extends ConsumerWidget {
                   Text(
                     'All active senders have zero remaining messages.',
                     style: TextStyle(
-                      color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                      color: AppTheme.textSecondary(context),
+                      fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
                     ),
                   ),
                 ],
@@ -61,10 +62,10 @@ class CleanSweepScreen extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: isDark ? AppTheme.darkSurface : const Color(0xFFF0F4F8),
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppTheme.surface(context),
+                  borderRadius: BorderRadius.circular(AppTheme.isNerd(context) ? 4 : 12),
                   border: Border.all(
-                    color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+                    color: AppTheme.border(context),
                   ),
                 ),
                 child: Row(
@@ -98,9 +99,8 @@ class CleanSweepScreen extends ConsumerWidget {
                             'Sweep out unwanted newsletters or bulk updates with 1 tap.',
                             style: TextStyle(
                               fontSize: 12,
-                              color: isDark
-                                  ? AppTheme.darkTextSecondary
-                                  : AppTheme.lightTextSecondary,
+                              color: AppTheme.textSecondary(context),
+                              fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
                             ),
                           ),
                         ],

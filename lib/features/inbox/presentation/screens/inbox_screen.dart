@@ -6,6 +6,7 @@ import '../../../../domain/models/category.dart';
 import '../../../accounts/presentation/screens/accounts_screen.dart';
 import '../../../clean_sweep/presentation/screens/clean_sweep_screen.dart';
 import '../../../providers.dart';
+import '../../../settings/presentation/screens/settings_screen.dart';
 import '../widgets/email_tile.dart';
 
 class InboxScreen extends ConsumerStatefulWidget {
@@ -63,13 +64,21 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('CleanMail', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   Text(
-                    activeTitle,
+                    AppTheme.isNerd(context) ? '> CleanMail [CLI]' : 'CleanMail',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
+                    ),
+                  ),
+                  Text(
+                    AppTheme.isNerd(context) ? '// $activeTitle' : activeTitle,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                      color: AppTheme.textSecondary(context),
                       fontWeight: FontWeight.normal,
+                      fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
                     ),
                   ),
                 ],
@@ -110,6 +119,18 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const AccountsScreen()),
+              );
+            },
+          ),
+
+          // Settings & Logs
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings & Logs',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
               );
             },
           ),

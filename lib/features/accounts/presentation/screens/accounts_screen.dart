@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart';
 import '../../../../core/services/google_auth_service.dart';
+import '../../../../core/services/log_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/local/sample_data.dart';
 import '../../../../domain/models/account.dart';
@@ -103,10 +104,10 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
-                          borderRadius: BorderRadius.circular(10),
+                          color: AppTheme.surface(context),
+                          borderRadius: BorderRadius.circular(AppTheme.isNerd(context) ? 4 : 10),
                           border: Border.all(
-                            color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+                            color: AppTheme.border(context),
                           ),
                         ),
                         child: const Center(
@@ -458,6 +459,12 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                   await ref.read(accountRepositoryProvider).deleteAccount(account.id);
                   await _googleAuth.clearStoredHistoryId(account.id);
                   await _googleAuth.clearStoredToken(account.id);
+                  AppLogger.warning(
+                    'Mailbox Disconnected',
+                    'Disconnected ${account.displayName} (${account.email}), purged local cache, token, and delta checkpoint',
+                    category: LogCategory.auth,
+                    metadata: {'email': account.email, 'accountId': account.id},
+                  );
                 }
               },
             ),

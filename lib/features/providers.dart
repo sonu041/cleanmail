@@ -1,5 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/services/google_auth_service.dart';
+import '../core/services/log_service.dart';
+import '../core/theme/app_theme.dart';
 import '../data/local/database.dart';
 import '../data/repositories/account_repository_impl.dart';
 import '../data/repositories/message_repository_impl.dart';
@@ -7,6 +10,53 @@ import '../domain/models/account.dart';
 import '../domain/models/category.dart';
 import '../domain/models/message.dart';
 import '../domain/models/sender_summary.dart';
+
+// ----------------------------------------------------
+// THEME & PREFERENCES
+// ----------------------------------------------------
+
+class ThemeModeNotifier extends StateNotifier<AppThemeMode> {
+  static const _themeStorageKey = 'cleanmail_theme_mode';
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+
+  ThemeModeNotifier() : super(AppThemeMode.system) {
+    _loadTheme();
+  }
+
+  Future<void> _loadTheme() async {
+    try {
+      final saved = await _storage.read(key: _themeStorageKey);
+      if (saved != null) {
+        state = AppThemeMode.fromString(saved);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> setTheme(AppThemeMode mode) async {
+    state = mode;
+    try {
+      await _storage.write(key: _themeStorageKey, value: mode.name);
+      AppLogger.info('Theme Changed', 'Switched app appearance to ${mode.label}', category: LogCategory.system);
+    } catch (_) {}
+  }
+}
+
+final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, AppThemeMode>((ref) {
+  return ThemeModeNotifier();
+});
+
+// ----------------------------------------------------
+// OPERATION LOGS & AUDIT TRAIL
+// ----------------------------------------------------
+
+final logServiceProvider = Provider<LogService>((ref) {
+  return LogService();
+});
+
+final logsStreamProvider = StreamProvider<List<AppLog>>((ref) {
+  final service = ref.watch(logServiceProvider);
+  return service.logsStream;
+});
 
 // Google Auth & Remote Sync Service provider
 final googleAuthServiceProvider = Provider<GoogleAuthService>((ref) {

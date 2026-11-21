@@ -55,6 +55,24 @@
 * **Instant Offline Access**: Read, search, and triage previously synced emails with zero internet connection.
 * **Secure Token Storage**: OAuth tokens and credentials are encrypted on-device via Android Keystore, iOS Keychain, and Windows DPAPI (`flutter_secure_storage`).
 
+### 7. ⚙️ Settings Section & Terminal Nerd Theme
+* **Multi-Theme Selection**:
+  * **System Default**: Automatically follows your device light or dark appearance (Default).
+  * **Paper Light**: Clean, high-contrast daylight reading aesthetic.
+  * **Focus Dark**: Modern, low-glare dark mode for low-light environments.
+  * **Terminal Nerd**: Retro hacker console aesthetic featuring CRT phosphor green (`#00FF66`), pure OLED black background (`#050805`), monospace typography throughout the entire app, retro status flags (`[NEWS]`, `[RECEIPTS]`, `[OK]`), and glowing terminal borders.
+* **Persistent Preferences**: Selected theme is stored securely on-device and remembered across app restarts.
+* **Central Settings Hub**: Quick access to appearance, audit logs, connected mailboxes, and Google Cloud OAuth Client ID configuration.
+
+### 8. 📋 Operation Log Viewer & Diagnostic Audit Trail
+* **Comprehensive Event Tracking**: Automatically tracks every operational event in the app:
+  * **Email Synchronization**: Live counter of total emails synced, sync start/finish times, delta checkpoint updates, and quota usage.
+  * **Auth & Tokens**: Login events, Google account chooser prompts, and OAuth Bearer token refresh timestamps.
+  * **Email Triage**: Read status modifications, archivals, deletions, restores, and bulk Sender Sweeps.
+  * **Errors & Warnings**: Immediate visibility into network issues, expired tokens (401), or disabled APIs (403).
+* **Search & Real-Time Filtering**: Filter logs by category (`SYNC`, `AUTH`, `TRIAGE`, `PIPELINE`, `SYSTEM`) or severity (`INFO`, `SUCCESS`, `WARNING`, `ERROR`).
+* **Export & Diagnostics**: One-tap copy of the complete formatted diagnostic log report to clipboard for troubleshooting.
+
 ---
 
 ## 🛠️ Technology Stack
@@ -76,8 +94,8 @@
 lib/
 ├── core/
 │   ├── constants/            # App constants, badge colors, OAuth scopes
-│   ├── services/             # GoogleAuthService, OAuth token hand-off
-│   ├── theme/                # Reading-first typography (Dark & Light)
+│   ├── services/             # GoogleAuthService, LogService (Audit Trail)
+│   ├── theme/                # Typography & Themes (Light, Dark, Terminal Nerd)
 │   └── utils/
 │       ├── heuristic_classifier.dart   # On-device category classifier
 │       └── html_to_text.dart           # HTML stripper & tracking pixel blocker
@@ -96,6 +114,7 @@ lib/
     ├── clean_sweep/          # Sender Sweep screen (bulk cleanup)
     ├── inbox/                # Unified inbox screen & swipeable email tiles
     ├── reader/               # Distraction-free text-only viewer
+    ├── settings/             # Settings screen & Operation Log Viewer
     └── providers.dart        # Global Riverpod reactive state providers
 ```
 

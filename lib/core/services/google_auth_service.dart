@@ -9,6 +9,7 @@ import '../../domain/models/message.dart';
 import '../../domain/repositories/account_repository.dart';
 import '../../domain/repositories/message_repository.dart';
 import '../constants/app_constants.dart';
+import '../services/log_service.dart';
 import '../utils/heuristic_classifier.dart';
 import '../utils/html_to_text.dart';
 
@@ -194,6 +195,7 @@ class GoogleAuthService {
       final headers = await getAuthHeadersForAccount(accountId);
       if (headers == null) {
         debugPrint('Cannot trash Gmail message $remoteMessageId: no valid session.');
+        AppLogger.warning('Trash Sync Blocked', 'No active session for account $accountId', category: LogCategory.triage);
         return false;
       }
 
@@ -203,9 +205,13 @@ class GoogleAuthService {
       );
 
       debugPrint('Moved Gmail message $remoteMessageId to Trash: status ${response.statusCode}');
+      if (response.statusCode == 200) {
+        AppLogger.info('Message Trashed', 'Moved message $remoteMessageId to Gmail Trash', category: LogCategory.triage);
+      }
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Error trashing Gmail message $remoteMessageId: $e');
+      AppLogger.error('Trash Sync Error', 'Failed to trash $remoteMessageId: $e', category: LogCategory.triage);
       return false;
     }
   }
@@ -225,9 +231,13 @@ class GoogleAuthService {
       );
 
       debugPrint('Untrashed Gmail message $remoteMessageId: status ${response.statusCode}');
+      if (response.statusCode == 200) {
+        AppLogger.info('Message Untrashed', 'Restored message $remoteMessageId from Gmail Trash', category: LogCategory.triage);
+      }
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Error untrashing Gmail message $remoteMessageId: $e');
+      AppLogger.error('Untrash Error', 'Failed to restore $remoteMessageId: $e', category: LogCategory.triage);
       return false;
     }
   }
@@ -260,6 +270,7 @@ class GoogleAuthService {
         }
       }));
     }
+    AppLogger.success('Bulk Trash Sync', 'Batch-trashed $successCount of ${remoteMessageIds.length} emails in Gmail', category: LogCategory.triage);
     return successCount;
   }
 
@@ -293,9 +304,13 @@ class GoogleAuthService {
       );
 
       debugPrint('Modified Gmail labels for $remoteMessageId: status ${response.statusCode}');
+      if (response.statusCode == 200) {
+        AppLogger.info('Label Modified', 'Updated labels on $remoteMessageId (add: $addLabelIds, remove: $removeLabelIds)', category: LogCategory.triage);
+      }
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Error modifying Gmail labels for $remoteMessageId: $e');
+      AppLogger.error('Label Modify Error', 'Failed to update labels on $remoteMessageId: $e', category: LogCategory.triage);
       return false;
     }
   }
@@ -424,9 +439,18 @@ class GoogleAuthService {
     }
 
     await accountRepo.saveAccount(account);
+    AppLogger.success(
+      'Mailbox Connected',
+      isAlreadyConnected
+          ? 'Refreshed credentials and re-synced ${account.email}'
+          : 'Connected new Gmail mailbox: ${account.email}',
+      category: LogCategory.auth,
+      metadata: {'email': account.email, 'accountId': account.id},
+    );
 
     // If headers has no authorization token and hasAccess is false, fail fast
     if (!headers.containsKey('Authorization') && !hasAccess) {
+      AppLogger.warning('Scope Notice', 'Gmail permissions not yet granted for ${account.email}', category: LogCategory.auth);
       return (
         account: account,
         syncedCount: 0,
@@ -451,10 +475,23 @@ class GoogleAuthService {
         debugPrint('Initialized Gmail historyId $profileHistoryId for ${account.email}');
       }
 
+      AppLogger.success(
+        'Initial Gmail Sync',
+        'Fetched and indexed $count recent emails for ${account.email}',
+        category: LogCategory.sync,
+        metadata: {'syncedCount': count, 'account': account.email},
+      );
+
       return (account: account, syncedCount: count, error: null, isAlreadyConnected: isAlreadyConnected);
     } catch (e) {
       debugPrint('Gmail Sync Error: $e');
       final humanError = _formatErrorMessage(e);
+      AppLogger.error(
+        'Gmail Sync Error',
+        'Failed to sync ${account.email}: $humanError',
+        category: LogCategory.sync,
+        metadata: {'account': account.email, 'error': humanError},
+      );
       return (account: account, syncedCount: 0, error: humanError, isAlreadyConnected: isAlreadyConnected);
     }
   }
@@ -521,6 +558,7 @@ class GoogleAuthService {
     }
 
     debugPrint('Starting Approach 2 Delta Sync for ${account.email} from historyId: $startHistoryId');
+    AppLogger.info('Delta Sync Started', 'Checking updates for ${account.email} from historyId $startHistoryId', category: LogCategory.sync);
 
     final deletedRemoteIds = <String>{};
     final archivedRemoteIds = <String>{};
@@ -612,6 +650,11 @@ class GoogleAuthService {
       if (e.response?.statusCode == 404) {
         // startHistoryId is expired (>30 days or invalid). Gracefully recover via windowed resync.
         debugPrint('Gmail historyId expired (HTTP 404). Falling back to windowed resync.');
+        AppLogger.warning(
+          'HistoryId Expired',
+          'Gmail checkpoint expired for ${account.email} (HTTP 404). Performing automatic windowed resync',
+          category: LogCategory.sync,
+        );
         final count = await _syncRecentGmailMessages(
           authHeaders: headers,
           account: account,
@@ -621,6 +664,12 @@ class GoogleAuthService {
         if (freshHistoryId != null) {
           await saveStoredHistoryId(account.id, freshHistoryId);
         }
+        AppLogger.success(
+          'Windowed Resync Complete',
+          'Recovered ${account.email} with $count messages. Fresh checkpoint: $freshHistoryId',
+          category: LogCategory.sync,
+          metadata: {'syncedCount': count, 'account': account.email, 'checkpoint': freshHistoryId},
+        );
         return (syncedCount: count, error: null);
       }
       rethrow;
@@ -691,6 +740,25 @@ class GoogleAuthService {
     }
 
     final totalDeltaChanges = newlyAddedCount + deletedRemoteIds.length + archivedRemoteIds.length;
+    if (totalDeltaChanges > 0) {
+      AppLogger.success(
+        'Delta Sync Complete',
+        'Applied $totalDeltaChanges changes ($newlyAddedCount new, ${deletedRemoteIds.length} deleted, ${archivedRemoteIds.length} archived, ${readRemoteIds.length + unreadRemoteIds.length} read status) for ${account.email}',
+        category: LogCategory.sync,
+        metadata: {
+          'syncedCount': totalDeltaChanges,
+          'account': account.email,
+          'checkpoint': latestHistoryId,
+        },
+      );
+    } else {
+      AppLogger.info(
+        'Mailbox Up to Date',
+        '${account.email} is synchronized at checkpoint $latestHistoryId',
+        category: LogCategory.sync,
+      );
+    }
+
     return (syncedCount: totalDeltaChanges, error: null);
   }
 

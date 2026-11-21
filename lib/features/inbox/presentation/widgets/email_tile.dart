@@ -19,9 +19,6 @@ class EmailTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     // Account color indicator
     final accountColor = account != null
         ? Color(account!.avatarColorValue)
@@ -99,7 +96,7 @@ class EmailTile extends ConsumerWidget {
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
-                color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+                color: AppTheme.border(context),
                 width: 0.8,
               ),
             ),
@@ -135,9 +132,8 @@ class EmailTile extends ConsumerWidget {
                                   ? FontWeight.w500
                                   : FontWeight.w700,
                               fontSize: 15,
-                              color: isDark
-                                  ? AppTheme.darkTextPrimary
-                                  : AppTheme.lightTextPrimary,
+                              color: AppTheme.textPrimary(context),
+                              fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -147,9 +143,8 @@ class EmailTile extends ConsumerWidget {
                           _formatDate(message.receivedAt),
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDark
-                                ? AppTheme.darkTextSecondary
-                                : AppTheme.lightTextSecondary,
+                            color: AppTheme.textSecondary(context),
+                            fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
                           ),
                         ),
                       ],
@@ -164,9 +159,8 @@ class EmailTile extends ConsumerWidget {
                             ? FontWeight.normal
                             : FontWeight.w600,
                         fontSize: 14,
-                        color: isDark
-                            ? AppTheme.darkTextPrimary
-                            : AppTheme.lightTextPrimary,
+                        color: AppTheme.textPrimary(context),
+                        fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -178,9 +172,8 @@ class EmailTile extends ConsumerWidget {
                       message.snippet,
                       style: TextStyle(
                         fontSize: 13,
-                        color: isDark
-                            ? AppTheme.darkTextSecondary
-                            : AppTheme.lightTextSecondary,
+                        color: AppTheme.textSecondary(context),
+                        fontFamily: AppTheme.isNerd(context) ? 'monospace' : null,
                         height: 1.3,
                       ),
                       maxLines: 2,
@@ -243,6 +236,26 @@ class EmailTile extends ConsumerWidget {
     Color bg;
     Color fg;
 
+    if (AppTheme.isNerd(context)) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+        decoration: BoxDecoration(
+          color: const Color(0xFF00220B),
+          borderRadius: BorderRadius.circular(3),
+          border: Border.all(color: const Color(0xFF005522), width: 0.8),
+        ),
+        child: Text(
+          '[${category.name.toUpperCase()}]',
+          style: const TextStyle(
+            color: AppTheme.nerdPrimary,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'monospace',
+          ),
+        ),
+      );
+    }
+
     switch (category) {
       case MailCategory.newsletters:
         bg = isDark ? const Color(0xFF1B3B2B) : const Color(0xFFE8F5E9);
@@ -259,7 +272,7 @@ class EmailTile extends ConsumerWidget {
       case MailCategory.personal:
       case MailCategory.all:
         bg = isDark ? const Color(0xFF2C2F33) : const Color(0xFFF0F0F0);
-        fg = isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary;
+        fg = AppTheme.textSecondary(context);
         break;
     }
 

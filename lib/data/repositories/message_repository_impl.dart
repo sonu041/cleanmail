@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import '../../core/services/google_auth_service.dart';
+import '../../core/services/log_service.dart';
 import '../../domain/models/category.dart';
 import '../../domain/models/message.dart';
 import '../../domain/models/sender_summary.dart';
@@ -66,6 +67,11 @@ class MessageRepositoryImpl implements MessageRepository {
   Future<void> markRead(String messageId, bool isRead) async {
     final entry = await _db.getMessageById(messageId);
     await _db.markMessageRead(messageId, isRead);
+    AppLogger.info(
+      'Message Status',
+      'Marked "${entry?.subject ?? messageId}" as ${isRead ? "Read" : "Unread"}',
+      category: LogCategory.triage,
+    );
 
     // Two-way read sync: update read status in real Gmail
     if (entry != null && entry.remoteMessageId.isNotEmpty) {
@@ -81,6 +87,11 @@ class MessageRepositoryImpl implements MessageRepository {
   Future<void> archive(String messageId, bool isArchived) async {
     final entry = await _db.getMessageById(messageId);
     await _db.archiveMessage(messageId, isArchived);
+    AppLogger.info(
+      'Message Archive',
+      '${isArchived ? "Archived" : "Unarchived"} "${entry?.subject ?? messageId}"',
+      category: LogCategory.triage,
+    );
 
     // Two-way archive sync: update INBOX label in real Gmail
     if (entry != null && entry.remoteMessageId.isNotEmpty) {
@@ -96,6 +107,11 @@ class MessageRepositoryImpl implements MessageRepository {
   Future<void> delete(String messageId) async {
     final entry = await _db.getMessageById(messageId);
     await _db.deleteMessage(messageId);
+    AppLogger.info(
+      'Message Trashed',
+      'Deleted "${entry?.subject ?? messageId}" from local DB',
+      category: LogCategory.triage,
+    );
 
     // Two-way delete sync: if message came from Gmail, move it to Trash in Gmail
     if (entry != null && entry.remoteMessageId.isNotEmpty) {
@@ -109,6 +125,11 @@ class MessageRepositoryImpl implements MessageRepository {
   @override
   Future<void> restoreMessage(MailMessage message) async {
     await saveMessages([message]);
+    AppLogger.info(
+      'Message Restored',
+      'Restored "${message.subject}" from Trash',
+      category: LogCategory.triage,
+    );
     // Two-way restore sync: restore message in Gmail Trash
     if (message.remoteMessageId.isNotEmpty) {
       _googleAuth.untrashGmailMessage(
@@ -167,6 +188,12 @@ class MessageRepositoryImpl implements MessageRepository {
     }
 
     final count = await _db.archiveAllFromSender(senderEmail);
+    AppLogger.success(
+      'Sender Sweep Archive',
+      'Archived $count emails from $senderEmail across ${byAccount.length} mailboxes',
+      category: LogCategory.triage,
+      metadata: {'count': count, 'sender': senderEmail},
+    );
 
     for (final entry in byAccount.entries) {
       for (final remoteId in entry.value) {
@@ -194,6 +221,12 @@ class MessageRepositoryImpl implements MessageRepository {
 
     // 2. Delete locally from SQLite
     final count = await _db.deleteAllFromSender(senderEmail);
+    AppLogger.success(
+      'Sender Sweep Delete',
+      'Purged $count emails from $senderEmail across ${byAccount.length} mailboxes',
+      category: LogCategory.triage,
+      metadata: {'count': count, 'sender': senderEmail},
+    );
 
     // 3. Two-way bulk delete: trash remote messages in Gmail for each account
     for (final entry in byAccount.entries) {
