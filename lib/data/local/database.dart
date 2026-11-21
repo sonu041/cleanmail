@@ -33,6 +33,14 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(metricEventsTable);
       }
     },
+    beforeOpen: (details) async {
+      try {
+        await customStatement('UPDATE accounts_table SET total_messages = 0 WHERE total_messages IS NULL');
+      } catch (_) {}
+      try {
+        await customStatement('UPDATE messages_table SET is_locked = 0 WHERE is_locked IS NULL');
+      } catch (_) {}
+    },
   );
 
   // ----------------------------------------------------
@@ -113,8 +121,12 @@ class AppDatabase extends _$AppDatabase {
     return query.watch().map((rows) {
       final map = <String, int>{};
       for (final row in rows) {
-        final accId = row.read<String>('account_id');
-        map[accId] = row.read<int>('cnt');
+        final accId = row.readNullable<String>('account_id') ?? '';
+        if (accId.isNotEmpty) {
+          map[accId] = row.readNullable<int>('cnt') ??
+              (row.data['cnt'] as num?)?.toInt() ??
+              0;
+        }
       }
       return map;
     });
@@ -129,8 +141,12 @@ class AppDatabase extends _$AppDatabase {
     return query.watch().map((rows) {
       final map = <String, int>{};
       for (final row in rows) {
-        final accId = row.read<String>('account_id');
-        map[accId] = row.read<int>('cnt');
+        final accId = row.readNullable<String>('account_id') ?? '';
+        if (accId.isNotEmpty) {
+          map[accId] = row.readNullable<int>('cnt') ??
+              (row.data['cnt'] as num?)?.toInt() ??
+              0;
+        }
       }
       return map;
     });
@@ -143,7 +159,9 @@ class AppDatabase extends _$AppDatabase {
       variables: [Variable.withString(accountId)],
       readsFrom: {messagesTable},
     ).getSingleOrNull();
-    return row?.read<int>('cnt') ?? 0;
+    return row?.readNullable<int>('cnt') ??
+        (row?.data['cnt'] as num?)?.toInt() ??
+        0;
   }
 
   /// Watches active (non-archived) message counts grouped by category,
@@ -160,8 +178,12 @@ class AppDatabase extends _$AppDatabase {
     return query.watch().map((rows) {
       final map = <String, int>{};
       for (final row in rows) {
-        final cat = row.read<String>('category').toLowerCase();
-        map[cat] = row.read<int>('cnt');
+        final cat = (row.readNullable<String>('category') ?? '').toLowerCase();
+        if (cat.isNotEmpty) {
+          map[cat] = row.readNullable<int>('cnt') ??
+              (row.data['cnt'] as num?)?.toInt() ??
+              0;
+        }
       }
       return map;
     });
@@ -180,7 +202,10 @@ class AppDatabase extends _$AppDatabase {
       'SELECT COUNT(*) AS cnt FROM messages_table $whereClause',
       readsFrom: {messagesTable},
     );
-    return query.watchSingle().map((row) => row.read<int>('cnt'));
+    return query.watchSingle().map((row) =>
+        row.readNullable<int>('cnt') ??
+        (row.data['cnt'] as num?)?.toInt() ??
+        0);
   }
 
   Future<MessageEntry?> getMessageById(String id) {

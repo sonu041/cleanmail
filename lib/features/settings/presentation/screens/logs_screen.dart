@@ -8,17 +8,31 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../providers.dart';
 
 class LogsScreen extends ConsumerStatefulWidget {
-  const LogsScreen({super.key});
+  final LogCategory? initialCategory;
+  final LogLevel? initialLevel;
+
+  const LogsScreen({
+    super.key,
+    this.initialCategory,
+    this.initialLevel,
+  });
 
   @override
   ConsumerState<LogsScreen> createState() => _LogsScreenState();
 }
 
 class _LogsScreenState extends ConsumerState<LogsScreen> {
-  LogCategory _selectedCategory = LogCategory.all;
+  late LogCategory _selectedCategory;
   LogLevel? _selectedLevel;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedCategory = widget.initialCategory ?? LogCategory.all;
+    _selectedLevel = widget.initialLevel;
+  }
 
   @override
   void dispose() {
@@ -54,7 +68,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          isNerd ? '> /var/log/cleanmail.log' : 'Operation Logs',
+          'Operation Logs',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -183,6 +197,32 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                 icon: Icons.receipt_long_outlined,
                 color: isNerd ? AppTheme.nerdTextPrimary : Colors.deepOrange,
                 isNerd: isNerd,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.auto_delete_outlined,
+                size: 13,
+                color: AppTheme.textSecondary(context),
+              ),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  isNerd
+                      ? 'AUTO_PURGE: INFO & SUCCESS > 100 PURGED | WARNING & ERROR PRESERVED'
+                      : 'Auto-purging info & success logs older than 100 (Warnings & Errors preserved)',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: AppTheme.textSecondary(context),
+                    fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),

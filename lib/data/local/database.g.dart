@@ -47,7 +47,7 @@ class $AccountsTableTable extends AccountsTable
       const VerificationMeta('totalMessages');
   @override
   late final GeneratedColumn<int> totalMessages = GeneratedColumn<int>(
-      'total_messages', aliasedName, false,
+      'total_messages', aliasedName, true,
       type: DriftSqlType.int,
       requiredDuringInsert: false,
       defaultValue: const Constant(0));
@@ -138,7 +138,7 @@ class $AccountsTableTable extends AccountsTable
       lastSyncedAt: attachedDatabase.typeMapping.read(
           DriftSqlType.dateTime, data['${effectivePrefix}last_synced_at']),
       totalMessages: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}total_messages'])!,
+          .read(DriftSqlType.int, data['${effectivePrefix}total_messages']),
     );
   }
 
@@ -155,7 +155,7 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
   final String provider;
   final int avatarColorValue;
   final DateTime? lastSyncedAt;
-  final int totalMessages;
+  final int? totalMessages;
   const AccountEntry(
       {required this.id,
       required this.email,
@@ -163,7 +163,7 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
       required this.provider,
       required this.avatarColorValue,
       this.lastSyncedAt,
-      required this.totalMessages});
+      this.totalMessages});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -175,7 +175,9 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
     if (!nullToAbsent || lastSyncedAt != null) {
       map['last_synced_at'] = Variable<DateTime>(lastSyncedAt);
     }
-    map['total_messages'] = Variable<int>(totalMessages);
+    if (!nullToAbsent || totalMessages != null) {
+      map['total_messages'] = Variable<int>(totalMessages);
+    }
     return map;
   }
 
@@ -189,7 +191,9 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
       lastSyncedAt: lastSyncedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastSyncedAt),
-      totalMessages: Value(totalMessages),
+      totalMessages: totalMessages == null && nullToAbsent
+          ? const Value.absent()
+          : Value(totalMessages),
     );
   }
 
@@ -203,7 +207,7 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
       provider: serializer.fromJson<String>(json['provider']),
       avatarColorValue: serializer.fromJson<int>(json['avatarColorValue']),
       lastSyncedAt: serializer.fromJson<DateTime?>(json['lastSyncedAt']),
-      totalMessages: serializer.fromJson<int>(json['totalMessages']),
+      totalMessages: serializer.fromJson<int?>(json['totalMessages']),
     );
   }
   @override
@@ -216,7 +220,7 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
       'provider': serializer.toJson<String>(provider),
       'avatarColorValue': serializer.toJson<int>(avatarColorValue),
       'lastSyncedAt': serializer.toJson<DateTime?>(lastSyncedAt),
-      'totalMessages': serializer.toJson<int>(totalMessages),
+      'totalMessages': serializer.toJson<int?>(totalMessages),
     };
   }
 
@@ -227,7 +231,7 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
           String? provider,
           int? avatarColorValue,
           Value<DateTime?> lastSyncedAt = const Value.absent(),
-          int? totalMessages}) =>
+          Value<int?> totalMessages = const Value.absent()}) =>
       AccountEntry(
         id: id ?? this.id,
         email: email ?? this.email,
@@ -236,7 +240,8 @@ class AccountEntry extends DataClass implements Insertable<AccountEntry> {
         avatarColorValue: avatarColorValue ?? this.avatarColorValue,
         lastSyncedAt:
             lastSyncedAt.present ? lastSyncedAt.value : this.lastSyncedAt,
-        totalMessages: totalMessages ?? this.totalMessages,
+        totalMessages:
+            totalMessages.present ? totalMessages.value : this.totalMessages,
       );
   AccountEntry copyWithCompanion(AccountsTableCompanion data) {
     return AccountEntry(
@@ -294,7 +299,7 @@ class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
   final Value<String> provider;
   final Value<int> avatarColorValue;
   final Value<DateTime?> lastSyncedAt;
-  final Value<int> totalMessages;
+  final Value<int?> totalMessages;
   final Value<int> rowid;
   const AccountsTableCompanion({
     this.id = const Value.absent(),
@@ -349,7 +354,7 @@ class AccountsTableCompanion extends UpdateCompanion<AccountEntry> {
       Value<String>? provider,
       Value<int>? avatarColorValue,
       Value<DateTime?>? lastSyncedAt,
-      Value<int>? totalMessages,
+      Value<int?>? totalMessages,
       Value<int>? rowid}) {
     return AccountsTableCompanion(
       id: id ?? this.id,
@@ -525,7 +530,7 @@ class $MessagesTableTable extends MessagesTable
       const VerificationMeta('isLocked');
   @override
   late final GeneratedColumn<bool> isLocked = GeneratedColumn<bool>(
-      'is_locked', aliasedName, false,
+      'is_locked', aliasedName, true,
       type: DriftSqlType.bool,
       requiredDuringInsert: false,
       defaultConstraints:
@@ -717,7 +722,7 @@ class $MessagesTableTable extends MessagesTable
       isStarred: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_starred'])!,
       isLocked: attachedDatabase.typeMapping
-          .read(DriftSqlType.bool, data['${effectivePrefix}is_locked'])!,
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_locked']),
       receivedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}received_at'])!,
     );
@@ -746,7 +751,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
   final bool isRead;
   final bool isArchived;
   final bool isStarred;
-  final bool isLocked;
+  final bool? isLocked;
   final DateTime receivedAt;
   const MessageEntry(
       {required this.id,
@@ -765,7 +770,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
       required this.isRead,
       required this.isArchived,
       required this.isStarred,
-      required this.isLocked,
+      this.isLocked,
       required this.receivedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -794,7 +799,9 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
     map['is_read'] = Variable<bool>(isRead);
     map['is_archived'] = Variable<bool>(isArchived);
     map['is_starred'] = Variable<bool>(isStarred);
-    map['is_locked'] = Variable<bool>(isLocked);
+    if (!nullToAbsent || isLocked != null) {
+      map['is_locked'] = Variable<bool>(isLocked);
+    }
     map['received_at'] = Variable<DateTime>(receivedAt);
     return map;
   }
@@ -825,7 +832,9 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
       isRead: Value(isRead),
       isArchived: Value(isArchived),
       isStarred: Value(isStarred),
-      isLocked: Value(isLocked),
+      isLocked: isLocked == null && nullToAbsent
+          ? const Value.absent()
+          : Value(isLocked),
       receivedAt: Value(receivedAt),
     );
   }
@@ -851,7 +860,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
       isRead: serializer.fromJson<bool>(json['isRead']),
       isArchived: serializer.fromJson<bool>(json['isArchived']),
       isStarred: serializer.fromJson<bool>(json['isStarred']),
-      isLocked: serializer.fromJson<bool>(json['isLocked']),
+      isLocked: serializer.fromJson<bool?>(json['isLocked']),
       receivedAt: serializer.fromJson<DateTime>(json['receivedAt']),
     );
   }
@@ -875,7 +884,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
       'isRead': serializer.toJson<bool>(isRead),
       'isArchived': serializer.toJson<bool>(isArchived),
       'isStarred': serializer.toJson<bool>(isStarred),
-      'isLocked': serializer.toJson<bool>(isLocked),
+      'isLocked': serializer.toJson<bool?>(isLocked),
       'receivedAt': serializer.toJson<DateTime>(receivedAt),
     };
   }
@@ -897,7 +906,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
           bool? isRead,
           bool? isArchived,
           bool? isStarred,
-          bool? isLocked,
+          Value<bool?> isLocked = const Value.absent(),
           DateTime? receivedAt}) =>
       MessageEntry(
         id: id ?? this.id,
@@ -919,7 +928,7 @@ class MessageEntry extends DataClass implements Insertable<MessageEntry> {
         isRead: isRead ?? this.isRead,
         isArchived: isArchived ?? this.isArchived,
         isStarred: isStarred ?? this.isStarred,
-        isLocked: isLocked ?? this.isLocked,
+        isLocked: isLocked.present ? isLocked.value : this.isLocked,
         receivedAt: receivedAt ?? this.receivedAt,
       );
   MessageEntry copyWithCompanion(MessagesTableCompanion data) {
@@ -1043,7 +1052,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
   final Value<bool> isRead;
   final Value<bool> isArchived;
   final Value<bool> isStarred;
-  final Value<bool> isLocked;
+  final Value<bool?> isLocked;
   final Value<DateTime> receivedAt;
   final Value<int> rowid;
   const MessagesTableCompanion({
@@ -1158,7 +1167,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageEntry> {
       Value<bool>? isRead,
       Value<bool>? isArchived,
       Value<bool>? isStarred,
-      Value<bool>? isLocked,
+      Value<bool?>? isLocked,
       Value<DateTime>? receivedAt,
       Value<int>? rowid}) {
     return MessagesTableCompanion(
@@ -1642,6 +1651,344 @@ class SenderRulesTableCompanion extends UpdateCompanion<SenderRuleEntry> {
   }
 }
 
+class $MetricEventsTableTable extends MetricEventsTable
+    with TableInfo<$MetricEventsTableTable, MetricEventEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MetricEventsTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _eventTypeMeta =
+      const VerificationMeta('eventType');
+  @override
+  late final GeneratedColumn<String> eventType = GeneratedColumn<String>(
+      'event_type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _countMeta = const VerificationMeta('count');
+  @override
+  late final GeneratedColumn<int> count = GeneratedColumn<int>(
+      'count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(1));
+  static const VerificationMeta _accountIdMeta =
+      const VerificationMeta('accountId');
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+      'account_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _timestampMeta =
+      const VerificationMeta('timestamp');
+  @override
+  late final GeneratedColumn<DateTime> timestamp = GeneratedColumn<DateTime>(
+      'timestamp', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _detailsMeta =
+      const VerificationMeta('details');
+  @override
+  late final GeneratedColumn<String> details = GeneratedColumn<String>(
+      'details', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, eventType, count, accountId, timestamp, details];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'metric_events_table';
+  @override
+  VerificationContext validateIntegrity(Insertable<MetricEventEntry> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('event_type')) {
+      context.handle(_eventTypeMeta,
+          eventType.isAcceptableOrUnknown(data['event_type']!, _eventTypeMeta));
+    } else if (isInserting) {
+      context.missing(_eventTypeMeta);
+    }
+    if (data.containsKey('count')) {
+      context.handle(
+          _countMeta, count.isAcceptableOrUnknown(data['count']!, _countMeta));
+    }
+    if (data.containsKey('account_id')) {
+      context.handle(_accountIdMeta,
+          accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta));
+    }
+    if (data.containsKey('timestamp')) {
+      context.handle(_timestampMeta,
+          timestamp.isAcceptableOrUnknown(data['timestamp']!, _timestampMeta));
+    } else if (isInserting) {
+      context.missing(_timestampMeta);
+    }
+    if (data.containsKey('details')) {
+      context.handle(_detailsMeta,
+          details.isAcceptableOrUnknown(data['details']!, _detailsMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MetricEventEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MetricEventEntry(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      eventType: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}event_type'])!,
+      count: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}count'])!,
+      accountId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}account_id']),
+      timestamp: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}timestamp'])!,
+      details: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}details']),
+    );
+  }
+
+  @override
+  $MetricEventsTableTable createAlias(String alias) {
+    return $MetricEventsTableTable(attachedDatabase, alias);
+  }
+}
+
+class MetricEventEntry extends DataClass
+    implements Insertable<MetricEventEntry> {
+  final int id;
+  final String eventType;
+  final int count;
+  final String? accountId;
+  final DateTime timestamp;
+  final String? details;
+  const MetricEventEntry(
+      {required this.id,
+      required this.eventType,
+      required this.count,
+      this.accountId,
+      required this.timestamp,
+      this.details});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['event_type'] = Variable<String>(eventType);
+    map['count'] = Variable<int>(count);
+    if (!nullToAbsent || accountId != null) {
+      map['account_id'] = Variable<String>(accountId);
+    }
+    map['timestamp'] = Variable<DateTime>(timestamp);
+    if (!nullToAbsent || details != null) {
+      map['details'] = Variable<String>(details);
+    }
+    return map;
+  }
+
+  MetricEventsTableCompanion toCompanion(bool nullToAbsent) {
+    return MetricEventsTableCompanion(
+      id: Value(id),
+      eventType: Value(eventType),
+      count: Value(count),
+      accountId: accountId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accountId),
+      timestamp: Value(timestamp),
+      details: details == null && nullToAbsent
+          ? const Value.absent()
+          : Value(details),
+    );
+  }
+
+  factory MetricEventEntry.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MetricEventEntry(
+      id: serializer.fromJson<int>(json['id']),
+      eventType: serializer.fromJson<String>(json['eventType']),
+      count: serializer.fromJson<int>(json['count']),
+      accountId: serializer.fromJson<String?>(json['accountId']),
+      timestamp: serializer.fromJson<DateTime>(json['timestamp']),
+      details: serializer.fromJson<String?>(json['details']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'eventType': serializer.toJson<String>(eventType),
+      'count': serializer.toJson<int>(count),
+      'accountId': serializer.toJson<String?>(accountId),
+      'timestamp': serializer.toJson<DateTime>(timestamp),
+      'details': serializer.toJson<String?>(details),
+    };
+  }
+
+  MetricEventEntry copyWith(
+          {int? id,
+          String? eventType,
+          int? count,
+          Value<String?> accountId = const Value.absent(),
+          DateTime? timestamp,
+          Value<String?> details = const Value.absent()}) =>
+      MetricEventEntry(
+        id: id ?? this.id,
+        eventType: eventType ?? this.eventType,
+        count: count ?? this.count,
+        accountId: accountId.present ? accountId.value : this.accountId,
+        timestamp: timestamp ?? this.timestamp,
+        details: details.present ? details.value : this.details,
+      );
+  MetricEventEntry copyWithCompanion(MetricEventsTableCompanion data) {
+    return MetricEventEntry(
+      id: data.id.present ? data.id.value : this.id,
+      eventType: data.eventType.present ? data.eventType.value : this.eventType,
+      count: data.count.present ? data.count.value : this.count,
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      timestamp: data.timestamp.present ? data.timestamp.value : this.timestamp,
+      details: data.details.present ? data.details.value : this.details,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MetricEventEntry(')
+          ..write('id: $id, ')
+          ..write('eventType: $eventType, ')
+          ..write('count: $count, ')
+          ..write('accountId: $accountId, ')
+          ..write('timestamp: $timestamp, ')
+          ..write('details: $details')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, eventType, count, accountId, timestamp, details);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MetricEventEntry &&
+          other.id == this.id &&
+          other.eventType == this.eventType &&
+          other.count == this.count &&
+          other.accountId == this.accountId &&
+          other.timestamp == this.timestamp &&
+          other.details == this.details);
+}
+
+class MetricEventsTableCompanion extends UpdateCompanion<MetricEventEntry> {
+  final Value<int> id;
+  final Value<String> eventType;
+  final Value<int> count;
+  final Value<String?> accountId;
+  final Value<DateTime> timestamp;
+  final Value<String?> details;
+  const MetricEventsTableCompanion({
+    this.id = const Value.absent(),
+    this.eventType = const Value.absent(),
+    this.count = const Value.absent(),
+    this.accountId = const Value.absent(),
+    this.timestamp = const Value.absent(),
+    this.details = const Value.absent(),
+  });
+  MetricEventsTableCompanion.insert({
+    this.id = const Value.absent(),
+    required String eventType,
+    this.count = const Value.absent(),
+    this.accountId = const Value.absent(),
+    required DateTime timestamp,
+    this.details = const Value.absent(),
+  })  : eventType = Value(eventType),
+        timestamp = Value(timestamp);
+  static Insertable<MetricEventEntry> custom({
+    Expression<int>? id,
+    Expression<String>? eventType,
+    Expression<int>? count,
+    Expression<String>? accountId,
+    Expression<DateTime>? timestamp,
+    Expression<String>? details,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (eventType != null) 'event_type': eventType,
+      if (count != null) 'count': count,
+      if (accountId != null) 'account_id': accountId,
+      if (timestamp != null) 'timestamp': timestamp,
+      if (details != null) 'details': details,
+    });
+  }
+
+  MetricEventsTableCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? eventType,
+      Value<int>? count,
+      Value<String?>? accountId,
+      Value<DateTime>? timestamp,
+      Value<String?>? details}) {
+    return MetricEventsTableCompanion(
+      id: id ?? this.id,
+      eventType: eventType ?? this.eventType,
+      count: count ?? this.count,
+      accountId: accountId ?? this.accountId,
+      timestamp: timestamp ?? this.timestamp,
+      details: details ?? this.details,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (eventType.present) {
+      map['event_type'] = Variable<String>(eventType.value);
+    }
+    if (count.present) {
+      map['count'] = Variable<int>(count.value);
+    }
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (timestamp.present) {
+      map['timestamp'] = Variable<DateTime>(timestamp.value);
+    }
+    if (details.present) {
+      map['details'] = Variable<String>(details.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MetricEventsTableCompanion(')
+          ..write('id: $id, ')
+          ..write('eventType: $eventType, ')
+          ..write('count: $count, ')
+          ..write('accountId: $accountId, ')
+          ..write('timestamp: $timestamp, ')
+          ..write('details: $details')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1649,12 +1996,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $MessagesTableTable messagesTable = $MessagesTableTable(this);
   late final $SenderRulesTableTable senderRulesTable =
       $SenderRulesTableTable(this);
+  late final $MetricEventsTableTable metricEventsTable =
+      $MetricEventsTableTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities =>
-      [accountsTable, messagesTable, senderRulesTable];
+      [accountsTable, messagesTable, senderRulesTable, metricEventsTable];
 }
 
 typedef $$AccountsTableTableCreateCompanionBuilder = AccountsTableCompanion
@@ -1665,7 +2014,7 @@ typedef $$AccountsTableTableCreateCompanionBuilder = AccountsTableCompanion
   required String provider,
   required int avatarColorValue,
   Value<DateTime?> lastSyncedAt,
-  Value<int> totalMessages,
+  Value<int?> totalMessages,
   Value<int> rowid,
 });
 typedef $$AccountsTableTableUpdateCompanionBuilder = AccountsTableCompanion
@@ -1676,7 +2025,7 @@ typedef $$AccountsTableTableUpdateCompanionBuilder = AccountsTableCompanion
   Value<String> provider,
   Value<int> avatarColorValue,
   Value<DateTime?> lastSyncedAt,
-  Value<int> totalMessages,
+  Value<int?> totalMessages,
   Value<int> rowid,
 });
 
@@ -1809,7 +2158,7 @@ class $$AccountsTableTableTableManager extends RootTableManager<
             Value<String> provider = const Value.absent(),
             Value<int> avatarColorValue = const Value.absent(),
             Value<DateTime?> lastSyncedAt = const Value.absent(),
-            Value<int> totalMessages = const Value.absent(),
+            Value<int?> totalMessages = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               AccountsTableCompanion(
@@ -1829,7 +2178,7 @@ class $$AccountsTableTableTableManager extends RootTableManager<
             required String provider,
             required int avatarColorValue,
             Value<DateTime?> lastSyncedAt = const Value.absent(),
-            Value<int> totalMessages = const Value.absent(),
+            Value<int?> totalMessages = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               AccountsTableCompanion.insert(
@@ -1886,7 +2235,7 @@ typedef $$MessagesTableTableCreateCompanionBuilder = MessagesTableCompanion
   Value<bool> isRead,
   Value<bool> isArchived,
   Value<bool> isStarred,
-  Value<bool> isLocked,
+  Value<bool?> isLocked,
   required DateTime receivedAt,
   Value<int> rowid,
 });
@@ -1908,7 +2257,7 @@ typedef $$MessagesTableTableUpdateCompanionBuilder = MessagesTableCompanion
   Value<bool> isRead,
   Value<bool> isArchived,
   Value<bool> isStarred,
-  Value<bool> isLocked,
+  Value<bool?> isLocked,
   Value<DateTime> receivedAt,
   Value<int> rowid,
 });
@@ -2154,7 +2503,7 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             Value<bool> isRead = const Value.absent(),
             Value<bool> isArchived = const Value.absent(),
             Value<bool> isStarred = const Value.absent(),
-            Value<bool> isLocked = const Value.absent(),
+            Value<bool?> isLocked = const Value.absent(),
             Value<DateTime> receivedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -2196,7 +2545,7 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             Value<bool> isRead = const Value.absent(),
             Value<bool> isArchived = const Value.absent(),
             Value<bool> isStarred = const Value.absent(),
-            Value<bool> isLocked = const Value.absent(),
+            Value<bool?> isLocked = const Value.absent(),
             required DateTime receivedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -2443,6 +2792,195 @@ typedef $$SenderRulesTableTableProcessedTableManager = ProcessedTableManager<
     ),
     SenderRuleEntry,
     PrefetchHooks Function()>;
+typedef $$MetricEventsTableTableCreateCompanionBuilder
+    = MetricEventsTableCompanion Function({
+  Value<int> id,
+  required String eventType,
+  Value<int> count,
+  Value<String?> accountId,
+  required DateTime timestamp,
+  Value<String?> details,
+});
+typedef $$MetricEventsTableTableUpdateCompanionBuilder
+    = MetricEventsTableCompanion Function({
+  Value<int> id,
+  Value<String> eventType,
+  Value<int> count,
+  Value<String?> accountId,
+  Value<DateTime> timestamp,
+  Value<String?> details,
+});
+
+class $$MetricEventsTableTableFilterComposer
+    extends Composer<_$AppDatabase, $MetricEventsTableTable> {
+  $$MetricEventsTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get eventType => $composableBuilder(
+      column: $table.eventType, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get count => $composableBuilder(
+      column: $table.count, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get accountId => $composableBuilder(
+      column: $table.accountId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get timestamp => $composableBuilder(
+      column: $table.timestamp, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get details => $composableBuilder(
+      column: $table.details, builder: (column) => ColumnFilters(column));
+}
+
+class $$MetricEventsTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $MetricEventsTableTable> {
+  $$MetricEventsTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get eventType => $composableBuilder(
+      column: $table.eventType, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get count => $composableBuilder(
+      column: $table.count, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get accountId => $composableBuilder(
+      column: $table.accountId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get timestamp => $composableBuilder(
+      column: $table.timestamp, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get details => $composableBuilder(
+      column: $table.details, builder: (column) => ColumnOrderings(column));
+}
+
+class $$MetricEventsTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MetricEventsTableTable> {
+  $$MetricEventsTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get eventType =>
+      $composableBuilder(column: $table.eventType, builder: (column) => column);
+
+  GeneratedColumn<int> get count =>
+      $composableBuilder(column: $table.count, builder: (column) => column);
+
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get timestamp =>
+      $composableBuilder(column: $table.timestamp, builder: (column) => column);
+
+  GeneratedColumn<String> get details =>
+      $composableBuilder(column: $table.details, builder: (column) => column);
+}
+
+class $$MetricEventsTableTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $MetricEventsTableTable,
+    MetricEventEntry,
+    $$MetricEventsTableTableFilterComposer,
+    $$MetricEventsTableTableOrderingComposer,
+    $$MetricEventsTableTableAnnotationComposer,
+    $$MetricEventsTableTableCreateCompanionBuilder,
+    $$MetricEventsTableTableUpdateCompanionBuilder,
+    (
+      MetricEventEntry,
+      BaseReferences<_$AppDatabase, $MetricEventsTableTable, MetricEventEntry>
+    ),
+    MetricEventEntry,
+    PrefetchHooks Function()> {
+  $$MetricEventsTableTableTableManager(
+      _$AppDatabase db, $MetricEventsTableTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MetricEventsTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MetricEventsTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MetricEventsTableTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> eventType = const Value.absent(),
+            Value<int> count = const Value.absent(),
+            Value<String?> accountId = const Value.absent(),
+            Value<DateTime> timestamp = const Value.absent(),
+            Value<String?> details = const Value.absent(),
+          }) =>
+              MetricEventsTableCompanion(
+            id: id,
+            eventType: eventType,
+            count: count,
+            accountId: accountId,
+            timestamp: timestamp,
+            details: details,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String eventType,
+            Value<int> count = const Value.absent(),
+            Value<String?> accountId = const Value.absent(),
+            required DateTime timestamp,
+            Value<String?> details = const Value.absent(),
+          }) =>
+              MetricEventsTableCompanion.insert(
+            id: id,
+            eventType: eventType,
+            count: count,
+            accountId: accountId,
+            timestamp: timestamp,
+            details: details,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable<$MetricEventsTableTable, MetricEventEntry>(
+                        table),
+                    BaseReferences<_$AppDatabase, $MetricEventsTableTable,
+                        MetricEventEntry>(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$MetricEventsTableTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $MetricEventsTableTable,
+    MetricEventEntry,
+    $$MetricEventsTableTableFilterComposer,
+    $$MetricEventsTableTableOrderingComposer,
+    $$MetricEventsTableTableAnnotationComposer,
+    $$MetricEventsTableTableCreateCompanionBuilder,
+    $$MetricEventsTableTableUpdateCompanionBuilder,
+    (
+      MetricEventEntry,
+      BaseReferences<_$AppDatabase, $MetricEventsTableTable, MetricEventEntry>
+    ),
+    MetricEventEntry,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2453,4 +2991,6 @@ class $AppDatabaseManager {
       $$MessagesTableTableTableManager(_db, _db.messagesTable);
   $$SenderRulesTableTableTableManager get senderRulesTable =>
       $$SenderRulesTableTableTableManager(_db, _db.senderRulesTable);
+  $$MetricEventsTableTableTableManager get metricEventsTable =>
+      $$MetricEventsTableTableTableManager(_db, _db.metricEventsTable);
 }

@@ -1200,33 +1200,54 @@ class GoogleAuthService {
     }
 
     final List<MailMessage> fetchedMessages = [];
-    const chunkSize = 10;
+    const chunkSize = 5;
+    bool rateLimitHit = false;
 
     for (var i = 0; i < toFetch.length; i += chunkSize) {
+      if (rateLimitHit) break;
+
       final end = (i + chunkSize < toFetch.length) ? i + chunkSize : toFetch.length;
       final chunk = toFetch.sublist(i, end);
 
       final chunkResults = await Future.wait(chunk.map((item) async {
         final messageId = item['id'] as String;
-        try {
-          final detailResponse = await _dio.get(
-            'https://gmail.googleapis.com/gmail/v1/users/me/messages/$messageId',
-            queryParameters: {'format': 'full'},
-            options: Options(headers: headers),
-          );
+        for (int attempt = 0; attempt < 2; attempt++) {
+          try {
+            final detailResponse = await _dio.get(
+              'https://gmail.googleapis.com/gmail/v1/users/me/messages/$messageId',
+              queryParameters: {'format': 'full'},
+              options: Options(headers: headers),
+            );
 
-          if (detailResponse.data is Map<String, dynamic>) {
-            final detailData = detailResponse.data as Map<String, dynamic>;
-            final labelIds = (detailData['labelIds'] as List<dynamic>? ?? []).map((e) => e.toString()).toSet();
-            final isInbox = labelIds.contains('INBOX');
-            final isSent = labelIds.contains('SENT');
-            if (isSent && !isInbox) {
-              return null;
+            if (detailResponse.data is Map<String, dynamic>) {
+              final detailData = detailResponse.data as Map<String, dynamic>;
+              final labelIds = (detailData['labelIds'] as List<dynamic>? ?? []).map((e) => e.toString()).toSet();
+              final isInbox = labelIds.contains('INBOX');
+              final isSent = labelIds.contains('SENT');
+              if (isSent && !isInbox) {
+                return null;
+              }
+              return _parseGmailMessageDetail(detailData, account.id);
             }
-            return _parseGmailMessageDetail(detailData, account.id);
+          } on DioException catch (e) {
+            final status = e.response?.statusCode;
+            final isThrottled = status == 403 || status == 429;
+            if (isThrottled) {
+              rateLimitHit = true;
+              if (attempt == 0) {
+                // Transient concurrency burst: pause 600ms and retry once
+                await Future.delayed(const Duration(milliseconds: 600));
+                continue;
+              }
+              debugPrint('Gmail API Rate Limit (HTTP $status) on message $messageId');
+            } else {
+              debugPrint('Error fetching older message detail $messageId: ${e.message ?? e.toString()}');
+              break;
+            }
+          } catch (e) {
+            debugPrint('Error fetching older message detail $messageId: $e');
+            break;
           }
-        } catch (e) {
-          debugPrint('Error fetching older message detail $messageId: $e');
         }
         return null;
       }));
@@ -1242,10 +1263,33 @@ class GoogleAuthService {
         toFetch.length,
         'Syncing older emails: ${fetchedMessages.length} of ${toFetch.length}...',
       );
+
+      if (rateLimitHit) {
+        break;
+      }
+
+      if (end < toFetch.length) {
+        await Future.delayed(const Duration(milliseconds: 60));
+      }
     }
 
     if (fetchedMessages.isNotEmpty) {
       await messageRepo.deduplicateMessages();
+    }
+
+    if (rateLimitHit) {
+      AppLogger.warning(
+        'Gmail Rate Limit (403/429)',
+        'Quota reached while fetching older emails for ${account.email}. Pausing before next retry.',
+        category: LogCategory.sync,
+        metadata: {'account': account.email, 'syncedCount': fetchedMessages.length},
+      );
+
+      return (
+        syncedCount: fetchedMessages.length,
+        hasMore: true,
+        error: 'Rate limit reached (403/429): Gmail API quota exceeded. Waiting before retry.',
+      );
     }
 
     AppLogger.info(
@@ -1459,16 +1503,29 @@ class GoogleAuthService {
         }
       }
 
+      if (statusCode == 429) {
+        return 'Rate limit reached (429): Gmail API quota exceeded.';
+      }
+
       if (statusCode == 403) {
-        if (serverMessage.toLowerCase().contains('gmail api has not been used') ||
-            serverMessage.toLowerCase().contains('disabled')) {
+        final lower = serverMessage.toLowerCase();
+        if (lower.contains('gmail api has not been used') ||
+            lower.contains('disabled')) {
           return 'Gmail API is disabled in your Google Cloud project. Please go to Google Cloud Console > APIs & Services > Library, search for "Gmail API", and click Enable.';
         }
-        if (serverMessage.toLowerCase().contains('insufficient') ||
-            serverMessage.toLowerCase().contains('scope')) {
+        if (lower.contains('insufficient') ||
+            lower.contains('scope')) {
           return 'Permission denied: Please ensure the scope ".../auth/gmail.readonly" and ".../auth/gmail.modify" are enabled in your OAuth consent screen.';
         }
-        return 'Google API 403 Forbidden: $serverMessage';
+        if (lower.contains('rate limit') ||
+            lower.contains('ratelimit') ||
+            lower.contains('quota') ||
+            lower.contains('userratelimitexceeded') ||
+            lower.contains('concurrent') ||
+            serverMessage.isEmpty) {
+          return 'Rate limit reached (403): Gmail API quota or concurrent request limit exceeded. Waiting before retry.';
+        }
+        return 'Rate limit / Forbidden (403): ${serverMessage.isNotEmpty ? serverMessage : "Gmail API request throttled. Waiting before retry."}';
       }
 
       if (statusCode == 401) {

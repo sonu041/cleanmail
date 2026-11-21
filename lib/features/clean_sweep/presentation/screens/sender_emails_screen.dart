@@ -29,7 +29,7 @@ class SenderEmailsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              isNerd ? '> $displayName' : displayName,
+              displayName,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,

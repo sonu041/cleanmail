@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart';
 import '../../../../core/services/google_auth_service.dart';
+import '../../../../core/services/auto_sync_service.dart';
 import '../../../../core/services/log_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/local/sample_data.dart';
 import '../../../../domain/models/account.dart';
 import '../../../providers.dart';
+import '../../../settings/presentation/screens/logs_screen.dart';
 import '../widgets/gsi_button.dart';
 
 class AccountsScreen extends ConsumerStatefulWidget {
@@ -61,6 +63,14 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     }
   }
 
+  void _openLogsScreen({LogCategory? category}) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LogsScreen(initialCategory: category),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final accountsAsync = ref.watch(accountsStreamProvider);
@@ -72,6 +82,12 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
       appBar: AppBar(
         title: const Text('Mailboxes', style: TextStyle(fontSize: 19)),
         actions: [
+          IconButton(
+            key: const ValueKey('mailboxes_view_logs_appbar_btn'),
+            icon: const Icon(Icons.receipt_long_outlined),
+            tooltip: 'View Operation & Sync Logs',
+            onPressed: () => _openLogsScreen(),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Configure Google Client ID',
@@ -97,9 +113,20 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                 return ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   children: [
-                    const Text(
-                      'Connected Mailboxes',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Connected Mailboxes',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        TextButton.icon(
+                          key: const ValueKey('mailboxes_view_logs_header_btn'),
+                          icon: const Icon(Icons.receipt_long_outlined, size: 16),
+                          label: const Text('View Logs', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                          onPressed: () => _openLogsScreen(),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 10),
 
@@ -228,6 +255,15 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                           );
                         }
                       },
+                    ),
+                    const SizedBox(height: 12),
+
+                    // View Operation & Sync Logs Button
+                    OutlinedButton.icon(
+                      key: const ValueKey('mailboxes_view_logs_btn'),
+                      icon: const Icon(Icons.receipt_long_outlined),
+                      label: const Text('View Operation & Sync Logs'),
+                      onPressed: () => _openLogsScreen(),
                     ),
                   ],
                 );
@@ -484,6 +520,8 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     Map<String, int> syncedCounts,
   ) {
     final isSyncing = _syncingAccountId == account.id;
+    final autoSyncState = ref.watch(autoSyncNotifierProvider)[account.id] ?? const AccountAutoSyncState();
+    final isAutoSyncing = autoSyncState.isRunning;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isNerd = AppTheme.isNerd(context);
 
@@ -527,17 +565,17 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        runSpacing: 2,
                         children: [
-                          Flexible(
-                            child: Text(
-                              account.displayName,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                          Text(
+                            account.displayName,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                             decoration: BoxDecoration(
@@ -565,10 +603,13 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                     ],
                   ),
                 ),
-                // Resync button
-                if (account.provider == MailProvider.gmail)
+                // Resync button (manual sync)
+                if (account.provider == MailProvider.gmail) ...[
                   IconButton(
                     key: ValueKey('sync_account_btn_${account.id}'),
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(6),
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     icon: isSyncing
                         ? const SizedBox(
                             width: 18,
@@ -576,10 +617,32 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.sync, color: AppTheme.lightPrimary),
-                    tooltip: 'Sync Emails Now',
+                    tooltip: 'Sync Emails Now (Manual)',
                     onPressed: isSyncing ? null : () => _handleSmartSyncAccount(account),
                   ),
+                  // Separate Old Mail Auto-Sync Toggle Button
+                  IconButton(
+                    key: ValueKey('toggle_older_sync_btn_${account.id}'),
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(6),
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    icon: isAutoSyncing
+                        ? Icon(Icons.autorenew_rounded,
+                            color: isNerd ? AppTheme.nerdAccentCyan : AppTheme.lightPrimary)
+                        : Icon(Icons.history_toggle_off_rounded,
+                            color: AppTheme.textSecondary(context)),
+                    tooltip: isAutoSyncing
+                        ? 'Auto-Sync Older Mails (100 / 10s): ON'
+                        : 'Auto-Sync Older Mails (100 / 10s): OFF',
+                    onPressed: () {
+                      ref.read(autoSyncNotifierProvider.notifier).toggleAutoSync(account);
+                    },
+                  ),
+                ],
                 IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.all(6),
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   icon: const Icon(Icons.delete_outline, color: AppTheme.deleteColor),
                   tooltip: 'Disconnect Account',
                   onPressed: () => _handleDisconnectAccount(account),
@@ -587,35 +650,158 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
               ],
             ),
 
-            const SizedBox(height: 14),
+            // Separate Auto-Sync Older Emails Toggle Control Banner
+            if (account.provider == MailProvider.gmail) ...[
+              Container(
+                key: ValueKey('auto_sync_banner_${account.id}'),
+                margin: const EdgeInsets.only(top: 10, bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: isAutoSyncing
+                      ? (isNerd
+                          ? AppTheme.nerdAccentCyan.withOpacity(0.12)
+                          : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.35))
+                      : (isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03)),
+                  borderRadius: BorderRadius.circular(isNerd ? 2 : 8),
+                  border: Border.all(
+                    color: isAutoSyncing
+                        ? (isNerd ? AppTheme.nerdAccentCyan : Theme.of(context).colorScheme.primary)
+                        : AppTheme.border(context),
+                    width: isAutoSyncing ? 1.2 : 1.0,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isAutoSyncing ? Icons.autorenew_rounded : Icons.history_rounded,
+                      size: 17,
+                      color: isAutoSyncing
+                          ? (isNerd ? AppTheme.nerdAccentCyan : Theme.of(context).colorScheme.primary)
+                          : AppTheme.textSecondary(context),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 6,
+                            runSpacing: 2,
+                            children: [
+                              Text(
+                                'Continuous Older Email Sync',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: isAutoSyncing
+                                      ? (isNerd ? AppTheme.nerdAccentCyan : AppTheme.textPrimary(context))
+                                      : AppTheme.textPrimary(context),
+                                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: isAutoSyncing
+                                      ? (autoSyncState.isRateLimited
+                                          ? Colors.orange.withOpacity(0.25)
+                                          : Colors.green.withOpacity(0.2))
+                                      : Colors.grey.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: Text(
+                                  isAutoSyncing
+                                      ? (autoSyncState.isRateLimited
+                                          ? 'RATE LIMITED (${autoSyncState.countdownSeconds}s)'
+                                          : (autoSyncState.countdownSeconds > 0
+                                              ? 'NEXT IN ${autoSyncState.countdownSeconds}s'
+                                              : 'SYNCING 100...'))
+                                      : '100 / 10s',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: isAutoSyncing
+                                        ? (autoSyncState.isRateLimited
+                                            ? (isNerd ? AppTheme.nerdAccentRed : Colors.orange.shade800)
+                                            : (isNerd ? AppTheme.nerdPrimary : Colors.green.shade800))
+                                        : AppTheme.textSecondary(context),
+                                    fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (autoSyncState.statusMessage != null && isAutoSyncing) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              autoSyncState.statusMessage!,
+                              key: ValueKey('auto_sync_status_${account.id}'),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: autoSyncState.isRateLimited
+                                    ? (isNerd ? AppTheme.nerdAccentRed : Colors.orange.shade800)
+                                    : (isNerd ? AppTheme.nerdAccentCyan : AppTheme.lightPrimary),
+                                fontWeight: FontWeight.w600,
+                                fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Switch.adaptive(
+                      key: ValueKey('auto_sync_toggle_${account.id}'),
+                      value: isAutoSyncing,
+                      activeColor: isNerd ? AppTheme.nerdAccentCyan : null,
+                      onChanged: (val) {
+                        ref.read(autoSyncNotifierProvider.notifier).toggleAutoSync(account);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
-            // 2. Sync Progress Bar & Stats
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '$syncedCount of $totalAvailable synced ($percentage%)',
-                  key: ValueKey('sync_text_${account.id}'),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isNerd ? AppTheme.nerdPrimary : null,
+            const SizedBox(height: 6),
+
+            // 3. Sync Progress Bar & Stats
+            SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  Text(
+                    '$syncedCount of $totalAvailable synced ($percentage%)',
+                    key: ValueKey('sync_text_${account.id}'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isNerd ? AppTheme.nerdPrimary : null,
+                    ),
                   ),
-                ),
-                Text(
-                  'Total in mailbox: $totalAvailable',
-                  key: ValueKey('total_text_${account.id}'),
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: AppTheme.textSecondary(context),
+                  Text(
+                    'Total in mailbox: $totalAvailable',
+                    key: ValueKey('total_text_${account.id}'),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: AppTheme.textSecondary(context),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
 
             const SizedBox(height: 6),
 
-            // 3. Progress Bar
+            // 4. Progress Bar
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
@@ -631,7 +817,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
               ),
             ),
 
-            // 4. Live Sync Status Message (during active sync)
+            // 5. Live Sync Status Message (during manual sync)
             if (isSyncing && _syncStatusMessage != null) ...[
               const SizedBox(height: 6),
               Text(
@@ -644,6 +830,42 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                 ),
               ),
             ],
+
+            const SizedBox(height: 6),
+
+            // 6. View Sync Logs Link for this mailbox
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                InkWell(
+                  key: ValueKey('account_view_logs_btn_${account.id}'),
+                  onTap: () => _openLogsScreen(category: LogCategory.sync),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.receipt_long_outlined,
+                          size: 13,
+                          color: isNerd ? AppTheme.nerdAccentCyan : AppTheme.lightPrimary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'View Sync Logs',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isNerd ? AppTheme.nerdAccentCyan : AppTheme.lightPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -668,6 +890,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     );
 
     if (confirm == true) {
+      ref.read(autoSyncNotifierProvider.notifier).stopAutoSync(account.id);
       await ref.read(accountRepositoryProvider).deleteAccount(account.id);
       await _googleAuth.clearStoredHistoryId(account.id);
       await _googleAuth.clearStoredToken(account.id);

@@ -8,6 +8,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../accounts/presentation/screens/accounts_screen.dart';
 import '../../../inbox/presentation/widgets/set_preferred_tag_dialog.dart';
 import '../../../providers.dart';
+import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 import 'logs_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -24,7 +25,7 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          isNerd ? '> /etc/cleanmail/config' : 'Settings',
+          'Settings',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -194,6 +195,48 @@ class SettingsScreen extends ConsumerWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const LogsScreen()),
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          Card(
+            shape: RoundedRectangleBorder(
+              side: BorderSide(color: AppTheme.border(context)),
+              borderRadius: BorderRadius.circular(isNerd ? 4 : 10),
+            ),
+            child: ListTile(
+              key: const ValueKey('settings_dashboard_tile'),
+              leading: CircleAvatar(
+                backgroundColor: isNerd ? const Color(0xFF002233) : const Color(0xFFE0F7FA),
+                child: Icon(
+                  Icons.insights_rounded,
+                  color: isNerd ? AppTheme.nerdAccentCyan : Colors.teal.shade700,
+                ),
+              ),
+              title: Text(
+                isNerd ? 'METRICS_DASHBOARD (Analytics)' : 'Triage & Sync Dashboard',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14.5,
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                ),
+              ),
+              subtitle: Text(
+                'Live stats: Synced, Deleted, Unsubscribed, and Locked emails',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary(context),
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                ),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const DashboardScreen()),
                 );
               },
             ),

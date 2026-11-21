@@ -19,9 +19,11 @@ void main() async {
   try {
     final accountRepo = container.read(accountRepositoryProvider);
     final messageRepo = container.read(messageRepositoryProvider);
+    final db = container.read(databaseProvider);
     await SampleDataSeeder.seedIfEmpty(
       accountRepo: accountRepo,
       messageRepo: messageRepo,
+      db: db,
     );
   } catch (e) {
     debugPrint('Initial seeder note: $e');

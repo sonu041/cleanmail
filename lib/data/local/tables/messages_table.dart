@@ -18,7 +18,7 @@ class MessagesTable extends Table {
   BoolColumn get isRead => boolean().withDefault(const Constant(false))();
   BoolColumn get isArchived => boolean().withDefault(const Constant(false))();
   BoolColumn get isStarred => boolean().withDefault(const Constant(false))();
-  BoolColumn get isLocked => boolean().withDefault(const Constant(false))();
+  BoolColumn get isLocked => boolean().nullable().withDefault(const Constant(false))();
   DateTimeColumn get receivedAt => dateTime()();
 
   @override

@@ -90,6 +90,9 @@ class LogService {
   static const _statsKey = 'cleanmail_app_stats_v1';
   static const int _maxInMemoryLogs = 500;
   static const int _maxPersistedLogs = 200;
+  static const int _maxInfoSuccessLogs = 100;
+
+  int get maxInfoSuccessLogs => _maxInfoSuccessLogs;
 
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   final List<AppLog> _logs = [];
@@ -140,12 +143,44 @@ class LogService {
             _logs.add(AppLog.fromJson(item));
           }
         }
+        purgeOldInfoAndSuccessLogs();
       }
     } catch (e) {
       debugPrint('LogService init note: $e');
     }
 
     _notify();
+  }
+
+  /// Automatically purges info and success messages older than 100 entries.
+  /// Warnings and errors are preserved for diagnostics and troubleshooting.
+  void purgeOldInfoAndSuccessLogs({bool notify = false}) {
+    int infoSuccessCount = 0;
+    final kept = <AppLog>[];
+
+    for (final log in _logs) {
+      if (log.level == LogLevel.info || log.level == LogLevel.success) {
+        infoSuccessCount++;
+        if (infoSuccessCount <= _maxInfoSuccessLogs) {
+          kept.add(log);
+        }
+        // When infoSuccessCount > _maxInfoSuccessLogs (older than 100), the entry is purged
+      } else {
+        // Warning and Error logs are always preserved
+        kept.add(log);
+      }
+    }
+
+    if (kept.length > _maxInMemoryLogs) {
+      kept.removeRange(_maxInMemoryLogs, kept.length);
+    }
+
+    _logs.clear();
+    _logs.addAll(kept);
+
+    if (notify) {
+      _notify();
+    }
   }
 
   /// Records a new application operation.
@@ -165,9 +200,7 @@ class LogService {
     );
 
     _logs.insert(0, entry);
-    if (_logs.length > _maxInMemoryLogs) {
-      _logs.removeRange(_maxInMemoryLogs, _logs.length);
-    }
+    purgeOldInfoAndSuccessLogs();
 
     // Update aggregate stats based on events
     if (category == LogCategory.sync) {

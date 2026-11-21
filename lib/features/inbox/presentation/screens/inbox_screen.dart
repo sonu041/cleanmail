@@ -263,7 +263,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  AppTheme.isNerd(context) ? '> CleanMail' : 'CleanMail',
+                  'CleanMail',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
@@ -271,7 +271,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen>
                   ),
                 ),
                 Text(
-                  AppTheme.isNerd(context) ? '// $activeTitle' : activeTitle,
+                  activeTitle,
                   style: TextStyle(
                     fontSize: 12,
                     color: AppTheme.textSecondary(context),

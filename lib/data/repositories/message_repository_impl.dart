@@ -90,16 +90,42 @@ class MessageRepositoryImpl implements MessageRepository {
     }).toList();
 
     await _db.insertOrUpdateMessages(companions);
+
+    // Record sync metric event for indexed emails
+    if (messages.isNotEmpty) {
+      final countByAccount = <String, int>{};
+      for (final m in messages) {
+        countByAccount[m.accountId] = (countByAccount[m.accountId] ?? 0) + 1;
+      }
+      for (final entry in countByAccount.entries) {
+        _db.recordMetricEvent(
+          eventType: 'sync',
+          count: entry.value,
+          accountId: entry.key,
+          details: 'Indexed ${entry.value} emails',
+        ).ignore();
+      }
+    }
   }
 
   @override
   Future<void> setLocked(String messageId, bool isLocked) async {
+    final entry = await _db.getMessageById(messageId);
     await _db.setLocked(messageId, isLocked);
     AppLogger.info(
       isLocked ? 'Message Locked' : 'Message Unlocked',
       '${isLocked ? "Locked" : "Unlocked"} message $messageId',
       category: LogCategory.triage,
     );
+
+    if (isLocked) {
+      _db.recordMetricEvent(
+        eventType: 'lock',
+        count: 1,
+        accountId: entry?.accountId,
+        details: 'Locked "${entry?.subject ?? messageId}"',
+      ).ignore();
+    }
   }
 
   @override
@@ -145,7 +171,7 @@ class MessageRepositoryImpl implements MessageRepository {
   @override
   Future<void> delete(String messageId) async {
     final entry = await _db.getMessageById(messageId);
-    if (entry != null && entry.isLocked) {
+    if (entry != null && entry.isLocked == true) {
       AppLogger.warning(
         'Delete Blocked',
         'Cannot delete locked message: "${entry.subject}"',
@@ -160,6 +186,14 @@ class MessageRepositoryImpl implements MessageRepository {
       'Deleted "${entry?.subject ?? messageId}" from local DB',
       category: LogCategory.triage,
     );
+
+    // Record delete metric
+    _db.recordMetricEvent(
+      eventType: 'delete',
+      count: 1,
+      accountId: entry?.accountId,
+      details: 'Deleted "${entry?.subject ?? messageId}"',
+    ).ignore();
 
     // Two-way delete sync: if message came from Gmail, move it to Trash in Gmail
     if (entry != null && entry.remoteMessageId.isNotEmpty) {
@@ -176,7 +210,7 @@ class MessageRepositoryImpl implements MessageRepository {
 
     final entries = await _db.getMessagesByIds(messageIds);
     // Never delete locked messages
-    final deletableEntries = entries.where((e) => !e.isLocked).toList();
+    final deletableEntries = entries.where((e) => e.isLocked != true).toList();
     if (deletableEntries.isEmpty) return [];
 
     final deletedMessages = deletableEntries.map(_mapToDomain).toList();
@@ -196,6 +230,16 @@ class MessageRepositoryImpl implements MessageRepository {
       category: LogCategory.triage,
       metadata: {'count': deletedMessages.length},
     );
+
+    // Record delete metric per account
+    for (final entry in byAccount.entries) {
+      _db.recordMetricEvent(
+        eventType: 'delete',
+        count: entry.value.length,
+        accountId: entry.key,
+        details: 'Batch deleted ${entry.value.length} emails',
+      ).ignore();
+    }
 
     // Two-way delete sync: move messages to Trash in Gmail
     for (final entry in byAccount.entries) {
@@ -333,7 +377,7 @@ class MessageRepositoryImpl implements MessageRepository {
     final entries = await _db.getMessagesBySenderEmail(senderEmail);
     final byAccount = <String, List<String>>{};
     for (final e in entries) {
-      if (!e.isLocked && e.remoteMessageId.isNotEmpty) {
+      if (e.isLocked != true && e.remoteMessageId.isNotEmpty) {
         byAccount.putIfAbsent(e.accountId, () => []).add(e.remoteMessageId);
       }
     }
@@ -346,6 +390,16 @@ class MessageRepositoryImpl implements MessageRepository {
       category: LogCategory.triage,
       metadata: {'count': count, 'sender': senderEmail},
     );
+
+    // Record delete metric per account
+    for (final entry in byAccount.entries) {
+      _db.recordMetricEvent(
+        eventType: 'delete',
+        count: entry.value.length,
+        accountId: entry.key,
+        details: 'Purged ${entry.value.length} emails from $senderEmail',
+      ).ignore();
+    }
 
     // 3. Two-way bulk delete: trash remote messages in Gmail for each account
     for (final entry in byAccount.entries) {
@@ -376,7 +430,7 @@ class MessageRepositoryImpl implements MessageRepository {
       isRead: entry.isRead,
       isArchived: entry.isArchived,
       isStarred: entry.isStarred,
-      isLocked: entry.isLocked,
+      isLocked: entry.isLocked ?? false,
       receivedAt: entry.receivedAt,
     );
   }

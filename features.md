@@ -38,9 +38,11 @@ This guide walks you through every feature available in the application, how to 
    - [Navigating to Mailboxes](#navigating-to-mailboxes)
    - [Sync Progress Bar (X of Y Synced)](#sync-progress-bar-x-of-y-synced)
    - [Smart Refresh & Batch Sync](#smart-refresh--batch-sync)
+   - [Continuous Older Email Sync (100 Mails / 10s)](#continuous-older-email-sync-100-mails--10s)
    - [Connecting and Removing Mailboxes](#connecting-and-removing-mailboxes)
-6. [Settings & Customization](#6-settings--customization)
+6. [Settings, Dashboard & Customization](#6-settings-dashboard--customization)
    - [Themes (System, Light, Dark, Terminal Nerd)](#themes)
+   - [Triage & Sync Dashboard](#triage--sync-dashboard)
    - [Managing Sender Rules](#managing-sender-rules)
    - [Cleaning Duplicate Emails](#cleaning-duplicate-emails)
    - [Activity & Diagnostic Logs](#activity--diagnostic-logs)
@@ -204,22 +206,63 @@ Tap the **Sync (circular arrows)** icon on any mailbox card:
 2. **Batches Older Emails (100 at a time)**: If your latest emails are already caught up, it automatically searches for older un-synced emails and downloads them in **batches of 100**.
 3. **Live Status**: Real-time progress updates appear under the progress bar (e.g. *"Syncing older emails: 40 of 100..."*).
 
+### Continuous Older Email Sync (100 Mails / 10s)
+If you want CleanMail to automatically download all historical emails into your local offline cache without manual tapping:
+- **Dedicated Toggle Switch**: Each mailbox features a dedicated **Continuous Older Email Sync** toggle switch (and top toggle button).
+- **Automatic 10-Second Interval**: When turned ON (checked), CleanMail fetches **100 older emails**, pauses for **10 seconds**, and immediately fetches the next 100 emails.
+- **Live Countdown Timer**: During the 10-second pause between batches, a live countdown shows the exact seconds remaining before the next 100 emails are downloaded (e.g., *"Next batch of 100 in 10s..."*, *"9s..."*, *"8s..."*).
+- **Smart Rate-Limit Protection**: If Google's API returns a rate limit warning, CleanMail automatically protects your account by adding **10 extra seconds** of backoff delay and clearly displays the countdown before retrying (e.g., *"Rate limit hit! Retrying in 20s..."*).
+- **Auto-Stop on Completion**: Once all historical emails in the mailbox are indexed, CleanMail displays *"All older emails synced!"* and automatically turns off the toggle.
+- **One-Tap Pause**: Simply flip the toggle switch OFF at any time to pause background syncing.
+
 ### Connecting and Removing Mailboxes
 - **Connect Gmail**: Tap **Connect Gmail Account** to sign in with Google Workspace or personal `@gmail.com`.
 - **Disconnect Account**: Tap the trash icon next to any mailbox to disconnect it. This removes the account and clears cached emails from your device.
 
+### View Sync & Operation Logs from Mailboxes
+Want to check how many emails were synced or inspect error details during a sync?
+- **Top Navigation Bar**: Tap the **View Logs (document/list)** icon in the top right corner of the Mailboxes screen.
+- **Section Header**: Tap the **View Logs** button next to *Connected Mailboxes*.
+- **Mailbox Card Link**: Tap **View Sync Logs** on any mailbox card to jump directly to the Sync log records.
+- **Bottom Utility Button**: Scroll to the bottom and tap **View Operation & Sync Logs**.
+- Any of these options immediately opens the **Operation Log Viewer**, displaying total synced messages, exact timestamps, and error alerts with full details.
+
 ---
 
-## 6. Settings & Customization
+## 6. Settings, Dashboard & Customization
 
-Tap the **Settings (gear)** icon in the top navigation bar to configure CleanMail.
+Tap the **Settings (gear)** icon in the top navigation bar to configure CleanMail, monitor productivity metrics, and manage mailboxes.
 
 ### Themes
 CleanMail includes multiple carefully crafted themes:
 - **System Default**: Automatically mirrors your device's light or dark mode.
 - **Paper Light**: Crisp, clean daylight theme for comfortable reading.
 - **Focus Dark**: Low-glare dark palette designed for nighttime and OLED screens.
-- **Terminal Nerd**: Retro hacker terminal theme featuring neon phosphor green typography, pitch-black OLED background, and monospace terminal styling throughout the entire application.
+- **Terminal Nerd**: Retro hacker terminal theme featuring neon phosphor green typography, pitch-black OLED background, and monospace terminal styling throughout the application, while keeping all screen titles clean, concise, and consistent across themes without awkward truncation.
+
+### Triage & Sync Dashboard
+Keep track of how cleanly and efficiently you are handling your email with the built-in productivity dashboard.
+- **How to Open**: Tap the **Settings (gear)** icon $\rightarrow$ look under **Diagnostics & Audit Trail** $\rightarrow$ tap **Triage & Sync Dashboard** (right below Operation Log Viewer).
+- **Core Triage Metrics**:
+  - **Emails Synced**: Total count of emails downloaded and indexed locally.
+  - **Emails Deleted**: Total count of emails cleaned and removed from inboxes.
+  - **Unsubscribed**: Total count of 1-tap newsletter unsubscriptions initiated.
+  - **Emails Locked**: Total count of important emails protected with deletion locks.
+- **Date Range Filtering**: Tap the time chips at the top to toggle between **Today**, **7 Days**, **30 Days**, or **All Time** to view your daily progress or long-term trends.
+- **Account Filtering**: Tap **All Inboxes** to see unified totals, or tap any specific email address chip to inspect metrics for that mailbox alone.
+- **Efficiency & Inbox Insights**:
+  - **Inbox Declutter Ratio**: The percentage of processed emails purged from your inbox.
+  - **Estimated Storage Freed**: Real-time calculation of disk space and cloud storage liberated (e.g. *1.4 MB*).
+  - **Privacy: Trackers Neutralized**: Count of hidden tracking pixels and spy beacons blocked.
+  - **Current Active Mailbox**: Total active email count with live read vs. unread distribution.
+- **Recent Triage Activity**: A real-time timeline displaying your latest deletions, sync batches, unsubscriptions, and locks with mailbox tags and relative timestamps.
+
+### Activity & Diagnostic Logs
+- **How to Open**: Tap the **Settings (gear)** icon $\rightarrow$ look under **Diagnostics & Audit Trail** $\rightarrow$ tap **Operation Log Viewer**.
+- **Real-Time Audit Trail**: View live records of mailbox syncs, token refreshes, and triage actions.
+- **Auto-Purge for Routine Logs**: CleanMail automatically purges routine informational and success messages older than 100 entries so your log history stays fast, lightweight, and clutter-free without taking unnecessary storage.
+- **Warning & Error Retention**: Important warnings and error alerts are always preserved and never discarded by auto-purge, ensuring you never lose diagnostic history if an issue occurs.
+- **Search & Filters**: Filter by category (Sync, Triage, Auth, System), search by keywords, copy all logs to your clipboard, or clear the log manually at any time.
 
 ### Managing Sender Rules
 - Under **Sender Preferred Tags & Rules**, view all active sender preferences.
@@ -227,10 +270,6 @@ CleanMail includes multiple carefully crafted themes:
 
 ### Cleaning Duplicate Emails
 - Tap **Clean Up Duplicate Emails Across Mailboxes** to instantly scan and remove any duplicate cross-account entries.
-
-### Activity & Diagnostic Logs
-- Tap **View Activity & Diagnostic Logs** to view real-time audit logs of sync events, triage actions, and security status.
-- You can search logs, filter by event type (Sync, Triage, Auth, System), and copy a formatted report with a single tap.
 
 ---
 

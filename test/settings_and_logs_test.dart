@@ -123,6 +123,61 @@ void main() {
       expect(logService.logs, isEmpty);
       expect(logService.totalMailsSynced, equals(0));
     });
+
+    test('Auto purge info and success logs older than 100 entries while keeping the 100 newest', () async {
+      await logService.clearLogs();
+
+      // Add 120 info & success logs (60 info, 60 success)
+      for (int i = 1; i <= 60; i++) {
+        AppLogger.info('Info Event $i', 'Detail info $i');
+      }
+      for (int i = 1; i <= 60; i++) {
+        AppLogger.success('Success Event $i', 'Detail success $i');
+      }
+
+      // Total info & success logs should be auto-purged to exactly 100
+      expect(logService.logs.length, equals(100));
+
+      // The newest 60 are Success Event 60 down to 1
+      expect(logService.logs[0].title, equals('Success Event 60'));
+      expect(logService.logs[59].title, equals('Success Event 1'));
+
+      // The remaining 40 slots are Info Event 60 down to 21
+      expect(logService.logs[60].title, equals('Info Event 60'));
+      expect(logService.logs[99].title, equals('Info Event 21'));
+
+      // Info events 1 through 20 (older than 100) were purged
+      final hasOldInfo1 = logService.logs.any((l) => l.title == 'Info Event 1');
+      final hasOldInfo20 = logService.logs.any((l) => l.title == 'Info Event 20');
+      expect(hasOldInfo1, isFalse);
+      expect(hasOldInfo20, isFalse);
+    });
+
+    test('Warnings and Errors are preserved when info and success messages older than 100 are purged', () async {
+      await logService.clearLogs();
+
+      // 1. Add critical warning and error first
+      AppLogger.warning('Critical Warning', 'Important rate limit warning');
+      AppLogger.error('Critical Error', 'Database auth error');
+
+      // 2. Add 110 info messages (which would exceed 100 and trigger purge)
+      for (int i = 1; i <= 110; i++) {
+        AppLogger.info('Sync Batch $i', 'Processed message $i');
+      }
+
+      // 100 info messages kept + 2 warning/error preserved = 102 total logs
+      expect(logService.logs.length, equals(102));
+
+      // Info batches 101 to 110 were purged, batches 11 to 110 are kept
+      expect(logService.logs.first.title, equals('Sync Batch 110'));
+      expect(logService.logs.any((l) => l.title == 'Sync Batch 1'), isFalse);
+      expect(logService.logs.any((l) => l.title == 'Sync Batch 10'), isFalse);
+      expect(logService.logs.any((l) => l.title == 'Sync Batch 11'), isTrue);
+
+      // Warning and error are preserved even though older than 100 info messages
+      expect(logService.logs.any((l) => l.title == 'Critical Warning'), isTrue);
+      expect(logService.logs.any((l) => l.title == 'Critical Error'), isTrue);
+    });
   });
 
   group('AppTheme & Nerd Theme Tests', () {

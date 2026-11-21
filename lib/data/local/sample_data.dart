@@ -3,11 +3,13 @@ import '../../domain/models/category.dart';
 import '../../domain/models/message.dart';
 import '../repositories/account_repository_impl.dart';
 import '../repositories/message_repository_impl.dart';
+import 'database.dart';
 
 class SampleDataSeeder {
   static Future<void> seedIfEmpty({
     required AccountRepositoryImpl accountRepo,
     required MessageRepositoryImpl messageRepo,
+    AppDatabase? db,
   }) async {
     final existingAccounts = await accountRepo.getAccounts();
     if (existingAccounts.isNotEmpty) {
@@ -282,5 +284,51 @@ View pull request: https://github.com/InnovateCorp/cleanmail/pull/44''',
     ];
 
     await messageRepo.saveMessages(sampleMessages);
+
+    // 3. Seed historical sample triage and sync metric events for Dashboard
+    if (db != null) {
+      await db.recordMetricEvent(
+        eventType: 'delete',
+        count: 5,
+        accountId: personalAccount.id,
+        timestamp: now.subtract(const Duration(hours: 2)),
+        details: 'Deleted 5 promotional emails',
+      );
+      await db.recordMetricEvent(
+        eventType: 'delete',
+        count: 12,
+        accountId: workAccount.id,
+        timestamp: now.subtract(const Duration(days: 3)),
+        details: 'Purged 12 build notification emails',
+      );
+      await db.recordMetricEvent(
+        eventType: 'delete',
+        count: 28,
+        accountId: personalAccount.id,
+        timestamp: now.subtract(const Duration(days: 12)),
+        details: 'Clean Sweep purged 28 newsletter emails',
+      );
+      await db.recordMetricEvent(
+        eventType: 'unsubscribe',
+        count: 1,
+        accountId: personalAccount.id,
+        timestamp: now.subtract(const Duration(days: 1)),
+        details: 'Unsubscribed from Flash Deals (deals@promotions.target.com)',
+      );
+      await db.recordMetricEvent(
+        eventType: 'unsubscribe',
+        count: 1,
+        accountId: workAccount.id,
+        timestamp: now.subtract(const Duration(days: 8)),
+        details: 'Unsubscribed from Vendor News (news@cloudvendor.io)',
+      );
+      await db.recordMetricEvent(
+        eventType: 'lock',
+        count: 1,
+        accountId: personalAccount.id,
+        timestamp: now.subtract(const Duration(days: 2)),
+        details: 'Protected flight boarding pass from deletion',
+      );
+    }
   }
 }

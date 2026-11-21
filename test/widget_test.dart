@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:drift/native.dart';
 import 'package:cleanmail/core/constants/app_constants.dart';
+import 'package:cleanmail/core/services/auto_sync_service.dart';
 import 'package:cleanmail/core/services/google_auth_service.dart';
 import 'package:cleanmail/core/utils/heuristic_classifier.dart';
 import 'package:cleanmail/core/utils/snackbar_utils.dart';
@@ -19,6 +20,9 @@ import 'package:cleanmail/features/inbox/presentation/screens/inbox_screen.dart'
 import 'package:cleanmail/features/inbox/presentation/widgets/email_tile.dart';
 import 'package:cleanmail/features/providers.dart';
 import 'package:cleanmail/features/reader/presentation/screens/reader_screen.dart';
+import 'package:cleanmail/features/settings/presentation/screens/logs_screen.dart';
+import 'package:cleanmail/features/settings/presentation/screens/settings_screen.dart';
+import 'package:cleanmail/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:cleanmail/core/theme/app_theme.dart';
 
 void main() {
@@ -1303,4 +1307,268 @@ void main() {
 
     await testDb.close();
   });
+
+  testWidgets('AccountsScreen renders continuous older email auto-sync toggle, active countdown badge, and rate limit badge',
+      (WidgetTester tester) async {
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+    final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
+
+    const account = MailAccount(
+      id: 'acc_auto_sync_1',
+      email: 'autosync@gmail.com',
+      displayName: 'Auto Sync User',
+      provider: MailProvider.gmail,
+      avatarColorValue: 0xFF1E88E5,
+      totalMessages: 1200,
+    );
+    await testAccountRepo.saveAccount(account);
+
+    final fakeAutoSyncNotifier = _FakeAutoSyncNotifier();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(testDb),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+          autoSyncNotifierProvider.overrideWith((ref) => fakeAutoSyncNotifier),
+        ],
+        child: const MaterialApp(
+          home: AccountsScreen(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // 1. Initial State: switch is OFF, badge says '100 / 10s'
+    expect(find.byKey(const ValueKey('toggle_older_sync_btn_acc_auto_sync_1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('auto_sync_banner_acc_auto_sync_1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('auto_sync_toggle_acc_auto_sync_1')), findsOneWidget);
+    expect(find.text('Continuous Older Email Sync'), findsOneWidget);
+    expect(find.text('100 / 10s'), findsOneWidget);
+
+    final switchFinder = find.byKey(const ValueKey('auto_sync_toggle_acc_auto_sync_1'));
+    final Switch initialSwitch = tester.widget(switchFinder);
+    expect(initialSwitch.value, isFalse);
+
+    // 2. Active Sync Countdown State: NEXT IN 7s
+    fakeAutoSyncNotifier.setAccountState(
+      'acc_auto_sync_1',
+      const AccountAutoSyncState(
+        isRunning: true,
+        countdownSeconds: 7,
+        statusMessage: 'Next sync in 7s...',
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('NEXT IN 7s'), findsOneWidget);
+    expect(find.text('Next sync in 7s...'), findsOneWidget);
+    final Switch activeSwitch = tester.widget(switchFinder);
+    expect(activeSwitch.value, isTrue);
+
+    // 3. Rate Limited State: RATE LIMITED (18s)
+    fakeAutoSyncNotifier.setAccountState(
+      'acc_auto_sync_1',
+      const AccountAutoSyncState(
+        isRunning: true,
+        isRateLimited: true,
+        countdownSeconds: 18,
+        backoffSeconds: 20,
+        statusMessage: 'Rate limit hit! Waiting 10s extra (20s total). Retrying in 18s...',
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('RATE LIMITED (18s)'), findsOneWidget);
+    expect(find.text('Rate limit hit! Waiting 10s extra (20s total). Retrying in 18s...'), findsOneWidget);
+
+    // 4. Tap toggle to trigger toggleAutoSync
+    await tester.tap(switchFinder);
+    await tester.pump();
+    expect(fakeAutoSyncNotifier.toggleCallCount, equals(1));
+
+    await testDb.close();
+  });
+
+  test('AutoSyncNotifier starts, stops, and resets account auto sync states properly', () {
+    final container = ProviderContainer(
+      overrides: [
+        googleAuthServiceProvider.overrideWithValue(GoogleAuthService()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(autoSyncNotifierProvider.notifier);
+
+    // Initial state is idle
+    var state = notifier.getAccountState('acc_test_notifier');
+    expect(state.isRunning, isFalse);
+    expect(state.countdownSeconds, equals(0));
+
+    // Stop resets state
+    notifier.stopAutoSync('acc_test_notifier');
+    state = notifier.getAccountState('acc_test_notifier');
+    expect(state.isRunning, isFalse);
+    expect(state.statusMessage, equals('Auto-sync stopped.'));
+  });
+
+  testWidgets('AccountsScreen renders View Log buttons and redirects to LogsScreen on tap',
+      (WidgetTester tester) async {
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+    final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
+
+    const account = MailAccount(
+      id: 'acc_logs_view_1',
+      email: 'logtest@gmail.com',
+      displayName: 'Log Test Account',
+      provider: MailProvider.gmail,
+      avatarColorValue: 0xFF1E88E5,
+      totalMessages: 500,
+    );
+    await testAccountRepo.saveAccount(account);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(testDb),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+        ],
+        child: const MaterialApp(
+          home: AccountsScreen(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // 1. Verify View Logs buttons exist
+    expect(find.byKey(const ValueKey('mailboxes_view_logs_appbar_btn')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mailboxes_view_logs_header_btn')), findsOneWidget);
+    expect(find.byKey(const ValueKey('account_view_logs_btn_acc_logs_view_1')), findsOneWidget);
+
+    // 2. Tap View Logs header button
+    await tester.tap(find.byKey(const ValueKey('mailboxes_view_logs_header_btn')));
+    await tester.pumpAndSettle();
+
+    // 3. Verify redirected to LogsScreen
+    expect(find.text('Operation Logs'), findsOneWidget);
+    expect(find.text('Mails Synced'), findsOneWidget);
+    expect(find.text('Logged Events'), findsOneWidget);
+
+    // 4. Tap back button to return to AccountsScreen
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mailboxes'), findsOneWidget);
+
+    // 5. Tap per-account View Sync Logs link
+    await tester.tap(find.byKey(const ValueKey('account_view_logs_btn_acc_logs_view_1')));
+    await tester.pumpAndSettle();
+
+    // 6. Verify redirected to LogsScreen
+    expect(find.text('Operation Logs'), findsOneWidget);
+
+    await testDb.close();
+  });
+
+  testWidgets('Page titles in Nerd/Dark theme show clean titles without full paths or trimming',
+      (WidgetTester tester) async {
+    final testDb = AppDatabase(NativeDatabase.memory());
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+    final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
+
+    // 1. SettingsScreen in Nerd theme
+    await tester.pumpWidget(
+      ProviderScope(
+        key: UniqueKey(),
+        overrides: [
+          themeModeProvider.overrideWith((ref) => _FakeThemeModeNotifier(AppThemeMode.nerd)),
+          databaseProvider.overrideWithValue(testDb),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.nerdTheme,
+          home: const SettingsScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('> /etc/cleanmail/config'), findsNothing);
+
+    // 2. LogsScreen in Nerd theme
+    await tester.pumpWidget(
+      ProviderScope(
+        key: UniqueKey(),
+        overrides: [
+          themeModeProvider.overrideWith((ref) => _FakeThemeModeNotifier(AppThemeMode.nerd)),
+          databaseProvider.overrideWithValue(testDb),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.nerdTheme,
+          home: const LogsScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Operation Logs'), findsOneWidget);
+    expect(find.text('> /var/log/cleanmail.log'), findsNothing);
+
+    // 3. DashboardScreen in Nerd theme
+    await tester.pumpWidget(
+      ProviderScope(
+        key: UniqueKey(),
+        overrides: [
+          themeModeProvider.overrideWith((ref) => _FakeThemeModeNotifier(AppThemeMode.nerd)),
+          databaseProvider.overrideWithValue(testDb),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
+          messageRepositoryProvider.overrideWithValue(testMessageRepo),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.nerdTheme,
+          home: const DashboardScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dashboard'), findsOneWidget);
+    expect(find.text('> METRICS & ANALYTICS DASHBOARD'), findsNothing);
+
+    await testDb.close();
+  });
+}
+
+class _FakeThemeModeNotifier extends ThemeModeNotifier {
+  _FakeThemeModeNotifier(AppThemeMode initialMode) {
+    state = initialMode;
+  }
+}
+
+class _FakeAutoSyncNotifier extends AutoSyncNotifier {
+  int toggleCallCount = 0;
+
+  _FakeAutoSyncNotifier() : super(_FakeRef());
+
+  void setAccountState(String accountId, AccountAutoSyncState accountState) {
+    state = {...state, accountId: accountState};
+  }
+
+  @override
+  void toggleAutoSync(MailAccount account) {
+    toggleCallCount++;
+  }
+}
+
+class _FakeRef implements Ref {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

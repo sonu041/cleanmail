@@ -61,7 +61,7 @@ class AccountRepositoryImpl implements AccountRepository {
       provider: MailProvider.fromString(entry.provider),
       avatarColorValue: entry.avatarColorValue,
       lastSyncedAt: entry.lastSyncedAt,
-      totalMessages: entry.totalMessages,
+      totalMessages: entry.totalMessages ?? 0,
     );
   }
 }

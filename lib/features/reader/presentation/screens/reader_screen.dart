@@ -682,6 +682,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
       if (context.mounted) {
+        // Record unsubscribe metric event
+        ref.read(databaseProvider).recordMetricEvent(
+          eventType: 'unsubscribe',
+          count: 1,
+          accountId: msg.accountId,
+          details: 'Unsubscribed from ${msg.senderName} (${msg.senderEmail})',
+        ).ignore();
+
         SnackBarUtils.showAutoHideSnackBar(
           messenger: ScaffoldMessenger.of(context),
           message: 'Unsubscribed from ${msg.senderName}',
