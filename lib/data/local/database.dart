@@ -134,20 +134,42 @@ class AppDatabase extends _$AppDatabase {
         .toSet();
   }
 
-  /// Removes any duplicate messages for the same (account_id, remote_message_id),
-  /// keeping only one entry per remote message.
+  /// Removes any duplicate messages across all mailboxes:
+  /// 1. Global deduplication by remote_message_id (removes cross-account duplicate insertions)
+  /// 2. Deduplication by identical content (subject, sender, received_at)
   Future<int> deduplicateMessages() async {
-    return customUpdate(
+    int totalRemoved = 0;
+
+    // 1. Remove duplicate remote_message_id records globally across all accounts,
+    // keeping only the single earliest inserted record.
+    final count1 = await customUpdate(
       '''
       DELETE FROM messages_table
-      WHERE id NOT IN (
-        SELECT MIN(id)
+      WHERE rowid NOT IN (
+        SELECT MIN(rowid)
         FROM messages_table
-        GROUP BY account_id, remote_message_id
+        GROUP BY remote_message_id
       )
       ''',
       updates: {messagesTable},
     );
+    totalRemoved += count1;
+
+    // 2. Remove identical subject + sender + received_at cross-joined duplicates
+    final count2 = await customUpdate(
+      '''
+      DELETE FROM messages_table
+      WHERE rowid NOT IN (
+        SELECT MIN(rowid)
+        FROM messages_table
+        GROUP BY subject, sender_email, received_at
+      )
+      ''',
+      updates: {messagesTable},
+    );
+    totalRemoved += count2;
+
+    return totalRemoved;
   }
 
   // ----------------------------------------------------

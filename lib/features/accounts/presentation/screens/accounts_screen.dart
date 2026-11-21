@@ -204,6 +204,27 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                         }
                       },
                     ),
+                    const SizedBox(height: 12),
+
+                    // Deduplicate Messages Button
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.cleaning_services_outlined),
+                      label: const Text('Clean Up Duplicate Emails Across Mailboxes'),
+                      onPressed: () async {
+                        final removed = await ref.read(messageRepositoryProvider).deduplicateMessages();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                removed > 0
+                                    ? 'Cleaned up $removed duplicate email${removed == 1 ? "" : "s"}.'
+                                    : 'No duplicate emails found. All mailboxes are clean!',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
                   ],
                 );
               },

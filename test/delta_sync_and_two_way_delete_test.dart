@@ -254,6 +254,26 @@ void main() {
     expect(allMessages.length, equals(1)); // Duplicates successfully removed
   });
 
+  test('Deduplication: removes cross-account duplicate emails with identical remoteMessageId', () async {
+    // Simulate a message accidentally synced into multiple mailboxes (cross join)
+    final acc1Msg = testMessage1.copyWith(id: 'acc1_dup_msg', accountId: 'google_account_1');
+    final acc2Dup = testMessage1.copyWith(id: 'acc2_dup_msg', accountId: 'google_account_2');
+    final acc3Dup = testMessage1.copyWith(id: 'acc3_dup_msg', accountId: 'google_account_3');
+
+    await messageRepo.saveMessages([acc1Msg, acc2Dup, acc3Dup]);
+
+    var allMessages = await db.watchInboxMessages().first;
+    expect(allMessages.length, equals(3)); // 3 cross-joined duplicate rows
+
+    // Run deduplication
+    final deleted = await messageRepo.deduplicateMessages();
+    expect(deleted, equals(2)); // Purged 2 cross-joined duplicates
+
+    allMessages = await db.watchInboxMessages().first;
+    expect(allMessages.length, equals(1)); // Only single clean copy remains
+    expect(allMessages.first.remoteMessageId, equals(testMessage1.remoteMessageId));
+  });
+
   test('Multi-account: two-way operations dispatch to correct accountId', () async {
     final account1Msg = MailMessage(
       id: 'acc1_msg1',

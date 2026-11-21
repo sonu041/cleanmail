@@ -21,6 +21,14 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(messageRepositoryProvider).deduplicateMessages();
+    });
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
@@ -65,7 +73,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    AppTheme.isNerd(context) ? '> CleanMail [CLI]' : 'CleanMail',
+                    AppTheme.isNerd(context) ? '> CleanMail' : 'CleanMail',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
@@ -158,6 +166,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
                     await googleAuth.resyncAccount(account: acc, messageRepo: messageRepo);
                   }
                 }
+                await messageRepo.deduplicateMessages();
               },
               child: messages.isEmpty
                   ? SingleChildScrollView(

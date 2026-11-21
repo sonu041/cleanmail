@@ -56,7 +56,7 @@ class EmailTile extends ConsumerWidget {
                   messageRepo.archive(message.id, false);
                 },
               ),
-              duration: const Duration(seconds: 4),
+              duration: const Duration(seconds: 5),
             ),
           );
           return true;
@@ -73,7 +73,7 @@ class EmailTile extends ConsumerWidget {
                   messageRepo.restoreMessage(message);
                 },
               ),
-              duration: const Duration(seconds: 4),
+              duration: const Duration(seconds: 5),
             ),
           );
           return true;
@@ -88,7 +88,10 @@ class EmailTile extends ConsumerWidget {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ReaderScreen(messageId: message.id),
+              builder: (_) => ReaderScreen(
+                messageId: message.id,
+                account: account,
+              ),
             ),
           );
         },

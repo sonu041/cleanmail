@@ -3,15 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../domain/models/account.dart';
 import '../../../../domain/models/message.dart';
 import '../../../providers.dart';
 
 class ReaderScreen extends ConsumerStatefulWidget {
   final String messageId;
+  final MailAccount? account;
 
   const ReaderScreen({
     super.key,
     required this.messageId,
+    this.account,
   });
 
   @override
@@ -20,6 +23,7 @@ class ReaderScreen extends ConsumerStatefulWidget {
 
 class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   MailMessage? _message;
+  MailAccount? _account;
   bool _isLoading = true;
   bool _isSenderExpanded = false;
 
@@ -32,14 +36,23 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   @override
   void initState() {
     super.initState();
+    _account = widget.account;
     _loadMessage();
   }
 
   Future<void> _loadMessage() async {
     final msg = await ref.read(messageRepositoryProvider).getMessage(widget.messageId);
+    MailAccount? acc = _account;
+    if (msg != null && acc == null) {
+      try {
+        final accounts = await ref.read(accountRepositoryProvider).getAccounts();
+        acc = accounts.where((a) => a.id == msg.accountId).firstOrNull;
+      } catch (_) {}
+    }
     if (mounted) {
       setState(() {
         _message = msg;
+        _account = acc;
         _isLoading = false;
       });
     }
@@ -99,6 +112,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           );
 
           final isNerd = AppTheme.isNerd(context);
+          final accounts = ref.watch(accountsStreamProvider).valueOrNull ?? [];
+          final currentAccount = widget.account ??
+              _account ??
+              accounts.where((a) => a.id == msg.accountId).firstOrNull;
+          final toAddress = _resolveToAddress(msg.accountId, accounts, currentAccount);
+          final toDisplay = (currentAccount != null &&
+                  currentAccount.displayName.isNotEmpty &&
+                  currentAccount.displayName != toAddress &&
+                  !toAddress.contains(currentAccount.displayName))
+              ? '${currentAccount.displayName} <$toAddress>'
+              : toAddress;
 
           return Stack(
             children: [
@@ -168,7 +192,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    msg.senderName,
+                                    msg.senderName.isNotEmpty ? msg.senderName : msg.senderEmail,
                                     style: TextStyle(
                                       fontWeight: FontWeight.w600,
                                       fontSize: 14,
@@ -178,8 +202,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
+                                  const SizedBox(height: 1),
                                   Text(
-                                    msg.senderEmail,
+                                    '${msg.senderEmail} • to: $toAddress',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: AppTheme.textSecondary(context),
@@ -226,15 +251,22 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                           const SizedBox(height: 12),
                           _buildDetailLine(
                             context,
-                            label: isNerd ? 'FROM:' : 'Sender Name:',
+                            label: isNerd ? 'FROM NAME:' : 'Sender Name:',
                             value: msg.senderName,
                             isNerd: isNerd,
                           ),
                           const SizedBox(height: 8),
                           _buildDetailLine(
                             context,
-                            label: isNerd ? 'EMAIL:' : 'Email Address:',
+                            label: isNerd ? 'FROM EMAIL:' : 'From Email:',
                             value: msg.senderEmail,
+                            isNerd: isNerd,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildDetailLine(
+                            context,
+                            label: isNerd ? 'TO:' : 'To:',
+                            value: toDisplay,
                             isNerd: isNerd,
                           ),
                           const SizedBox(height: 8),
@@ -580,5 +612,32 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       return DateFormat('yyyy-MM-dd HH:mm:ss').format(date);
     }
     return DateFormat('EEEE, MMM d, yyyy • h:mm a').format(date);
+  }
+
+  String _resolveToAddress(
+    String accountId,
+    List<MailAccount> accounts,
+    MailAccount? fallbackAccount,
+  ) {
+    if (fallbackAccount != null && fallbackAccount.email.isNotEmpty) {
+      return fallbackAccount.email;
+    }
+    final matched = accounts.where((a) => a.id == accountId).firstOrNull;
+    if (matched != null && matched.email.isNotEmpty) {
+      return matched.email;
+    }
+    for (final acc in accounts) {
+      if (accountId.contains(acc.email) || accountId.contains(acc.id)) {
+        return acc.email;
+      }
+    }
+    if (accounts.isNotEmpty && accounts.first.email.isNotEmpty) {
+      return accounts.first.email;
+    }
+    final cleaned = accountId.replaceFirst('google_', '');
+    if (cleaned.contains('@')) {
+      return cleaned;
+    }
+    return accountId.isNotEmpty ? accountId : 'me';
   }
 }

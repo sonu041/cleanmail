@@ -6,7 +6,9 @@ import 'package:cleanmail/core/constants/app_constants.dart';
 import 'package:cleanmail/core/services/google_auth_service.dart';
 import 'package:cleanmail/core/utils/heuristic_classifier.dart';
 import 'package:cleanmail/data/local/database.dart';
+import 'package:cleanmail/data/repositories/account_repository_impl.dart';
 import 'package:cleanmail/data/repositories/message_repository_impl.dart';
+import 'package:cleanmail/domain/models/account.dart';
 import 'package:cleanmail/domain/models/category.dart';
 import 'package:cleanmail/domain/models/message.dart';
 import 'package:cleanmail/features/inbox/presentation/widgets/email_tile.dart';
@@ -111,6 +113,17 @@ void main() {
       (WidgetTester tester) async {
     final testDb = AppDatabase(NativeDatabase.memory());
     final testMessageRepo = MessageRepositoryImpl(testDb, GoogleAuthService());
+    final testAccountRepo = AccountRepositoryImpl(testDb);
+
+    await testAccountRepo.saveAccount(
+      const MailAccount(
+        id: 'acc1',
+        email: 'alex.chen@gmail.com',
+        displayName: 'Alex Chen',
+        provider: MailProvider.gmail,
+        avatarColorValue: 0xFF2563EB,
+      ),
+    );
 
     final message = MailMessage(
       id: 'acc1_msg_reader',
@@ -131,7 +144,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          databaseProvider.overrideWithValue(testDb),
           messageRepositoryProvider.overrideWithValue(testMessageRepo),
+          accountRepositoryProvider.overrideWithValue(testAccountRepo),
         ],
         child: const MaterialApp(
           home: ReaderScreen(messageId: 'acc1_msg_reader'),
@@ -141,18 +156,22 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    // Verify initial collapsed state: short date '3h' is visible
+    // Verify initial collapsed state: short date '3h' and to in collapsed header
     expect(find.text('3h'), findsOneWidget);
+    expect(find.text('notifications@github.com • to: alex.chen@gmail.com'), findsOneWidget);
     expect(find.text('Sender Name:'), findsNothing);
-    expect(find.text('Email Address:'), findsNothing);
+    expect(find.text('From Email:'), findsNothing);
+    expect(find.text('To:'), findsNothing);
 
     // Tap to expand
     await tester.tap(find.byKey(const ValueKey('reader_sender_box')));
     await tester.pumpAndSettle();
 
-    // Verify expanded details are shown on separate lines
+    // Verify expanded details are shown on separate lines with To placed after From Email
     expect(find.text('Sender Name:'), findsOneWidget);
-    expect(find.text('Email Address:'), findsOneWidget);
+    expect(find.text('From Email:'), findsOneWidget);
+    expect(find.text('To:'), findsOneWidget);
+    expect(find.text('Alex Chen <alex.chen@gmail.com>'), findsOneWidget);
     expect(find.text('Date & Time:'), findsOneWidget);
     expect(find.text('notifications@github.com'), findsWidgets);
 
@@ -162,7 +181,8 @@ void main() {
 
     // Verify collapsed again
     expect(find.text('Sender Name:'), findsNothing);
-    expect(find.text('Email Address:'), findsNothing);
+    expect(find.text('From Email:'), findsNothing);
+    expect(find.text('To:'), findsNothing);
     expect(find.text('3h'), findsOneWidget);
 
     await testDb.close();

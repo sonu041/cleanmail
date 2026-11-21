@@ -263,6 +263,54 @@ class SettingsScreen extends ConsumerWidget {
             ),
             child: ListTile(
               leading: CircleAvatar(
+                backgroundColor: isNerd ? const Color(0xFF331A00) : const Color(0xFFFFF3E0),
+                child: Icon(
+                  Icons.cleaning_services_outlined,
+                  color: isNerd ? AppTheme.nerdAccentYellow : Colors.deepOrange,
+                ),
+              ),
+              title: Text(
+                isNerd ? 'CLEAN_DUPLICATE_EMAILS' : 'Clean Up Duplicate Emails',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14.5,
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                ),
+              ),
+              subtitle: Text(
+                'Purge cross-joined duplicate messages across all mailboxes',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary(context),
+                  fontFamily: isNerd ? AppTheme.nerdFontFamily : null,
+                ),
+              ),
+              trailing: const Icon(Icons.cleaning_services, size: 18),
+              onTap: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final removed = await ref.read(messageRepositoryProvider).deduplicateMessages();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      removed > 0
+                          ? 'Successfully cleaned up $removed duplicate email${removed == 1 ? "" : "s"}.'
+                          : 'No duplicate emails found. All mailboxes are clean!',
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          Card(
+            shape: RoundedRectangleBorder(
+              side: BorderSide(color: AppTheme.border(context)),
+              borderRadius: BorderRadius.circular(isNerd ? 4 : 10),
+            ),
+            child: ListTile(
+              leading: CircleAvatar(
                 backgroundColor: isNerd ? const Color(0xFF261D00) : const Color(0xFFFFF8E1),
                 child: Icon(
                   Icons.key_outlined,
